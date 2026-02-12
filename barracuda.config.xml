@@ -1,0 +1,695 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--<!DOCTYPE Barracuda SYSTEM "http://microdoc.de/dtd/barracuda.config.dtd">-->
+<!DOCTYPE Barracuda [ <!ELEMENT Barracuda (Startup,Logging,Configuration*,CustomConfiguration*)> <!ATTLIST Barracuda Version CDATA #REQUIRED > <!ELEMENT Startup (Load*)> <!ELEMENT Load EMPTY> <!ATTLIST Load SCom CDATA #REQUIRED > <!ELEMENT Logging (Property)*> <!ELEMENT Configuration (Property)*> <!ATTLIST Configuration SCom CDATA #REQUIRED > <!ELEMENT Property (#PCDATA | Property)*> <!ATTLIST Property Name CDATA "" > <!ELEMENT CustomConfiguration EMPTY> <!ATTLIST CustomConfiguration Name CDATA #REQUIRED > ]>
+<Barracuda Version="v1.0.0">
+	<!-- The Startup-tag is used for configuring the server startup . At the
+		moment there is only loading of SComs. -->
+	<Startup>
+		<!-- The Load-tag is used for defining the SComs which should ne loaded
+			at startup. The SCom-attribute may hold the SCom name (which is returned
+			by the getName() method) or its classname. -->
+		<!-- <Load SCom="SessionManager" /> Not necessary since start() needs not
+			be called and it will be implicitly loaded by ClientInterfaces -->
+		<Load SCom="ServerProperties" />
+		<Load SCom="ClientInterface" />
+		<Load SCom="SessionManager" />
+		<Load SCom="ProfilerManager" />
+		<!-- <Load SCom="ConsoleClientInterface" /> -->
+		<Load SCom="de.cerpsw.barracuda.jobserver.JobServerSCom" />
+	</Startup>
+	<Logging>
+		<Property Name="defaultLogLevel">INFO</Property>
+		<!-- defines what loglevel should be used for all undefined (not defined
+			in the nonDefaults section) log components -->
+		<Property Name="logWriter">
+			<!-- defines the LogWriter class and an argument list to its constructor -->
+			<Property Name="class">de.cerpsw.sysfunction.base.impl.LogFileWriter</Property>
+			<Property Name="args">
+				<Property>CATUNO.pro.log</Property>
+				<Property>UTF-8</Property>
+			</Property>
+		</Property>
+		<Property Name="logFormatter">
+			<!-- defines the LogFormatter class and an argument list to its constructor -->
+			<Property Name="class">com.mdsws.logging.DefaultLogFormatter</Property>
+			<Property Name="args" />
+		</Property>
+		<Property Name="nonDefaults">
+			<!-- defines all components which should not use the default log level.
+				For each non-default there must be a nameless property entry, which itself
+				contains the property componentId and logLevel. -->
+			<Property>
+				<Property Name="componentId">Session</Property>
+				<Property Name="logLevel">INFO</Property>
+			</Property>
+		</Property>
+	</Logging>
+	<Configuration SCom="ServerComponentManager">
+		<Property Name="SComCallTimeout">0</Property>
+		<!-- defines in milliseconds how long initialization of each SCom may take,
+			0 means "no limit" and should be used e.g. when debugging the startup process -->
+	</Configuration>
+	<Configuration SCom="ServerEnvironment">
+		<!-- <Property Name="EnvironmentClass">com.mdsws.barracuda.server.tomcat.TomcatServerEnvironment</Property> -->
+		<Property Name="EnvironmentClass">com.mdsws.barracuda.server.DefaultServerEnvironment</Property>
+		<!-- Class that should be used for web server communincation etc.; must
+			implement the ServerEnvironment interface -->
+	</Configuration>
+	<Configuration SCom="ClientInterface">
+		<Property Name="ClientInactivityTimeout">1800000</Property>
+	</Configuration>
+	<Configuration SCom="KeyStore">
+		<Property Name="keystore">keystore</Property> <!-- the directory in which the licence key files are stored -->
+		<Property Name="customerKey">CustomerKey</Property> <!-- the name of the customer key which is used in this installation -->
+	</Configuration>
+	<Configuration SCom="SessionManager">
+		<Property Name="MaxRecursionDepth">600</Property>
+		<!-- The maximum number of recursion depth of a jpl program use -1 to switch
+			off 1100 seems to be the maximum number possible under windows java with
+			hotspot vm -->
+		<Property Name="AutoDump">0</Property>
+		<!-- Determine if a dump should be printed on every jpl runtime exception -->
+		<Property Name="DebuggerPort">60606</Property>
+		<!-- port used by eclipse or command line debugger to attach to the server -->
+		<Property Name="LauncherPort">60607</Property> <!-- port used for starting/stopping a session or the server itself -->
+		<Property Name="LogCodeCoverage">false</Property>
+		<!-- if set to true barracuda code coverage log files (.bcc) will be created
+			for each code file -->
+		<Property Name="DebugManager">
+			<!-- If this property is set to true, an automatic flush command will
+				be executed each time a debugging session is suspended, i.e. all operations
+				on widgets will be visible immediately. CAUTION: Currently there are some
+				problems with flush during initialization of screens (setting the modality
+				is not possible after the screen has been displayed). The default value is
+				false, which means no flush is performed (display will be updated on explicit
+				flush or when server finished processing) -->
+			<Property Name="FlushOnSuspend">true</Property>
+		</Property>
+	</Configuration>
+	<Configuration SCom="ServerProperties">
+		<Property Name="display_type">
+			<Property Name="1">Ohne Rand</Property>
+			<Property Name="0">Mit Rand</Property>
+		</Property>
+		<Property Name="format_type">
+			<Property Name="DATE_TIME">
+				<Property Name="CUSTOM">Benutzerdefiniert</Property>
+				<Property Name="DEFAULT_0">DEFAULT DATE/TIME</Property>
+				<Property Name="DEFAULT_1">DATE OUTPUT TT.MM.JJJJ</Property>
+				<Property Name="DEFAULT_2">DEFAULT TIME</Property>
+				<Property Name="DEFAULT_3">DATE 6 INPUT</Property>
+				<Property Name="DEFAULT_4">DAY OF THE WEEK nur Versuch</Property>
+				<Property Name="DEFAULT_5">DAY OF THE YEAR nur Versuch</Property>
+				<Property Name="DEFAULT_6">DATE DD.MM.YY</Property>
+				<Property Name="DEFAULT_7">DATE 8 INPUT</Property>
+			</Property>
+			<Property Name="NUMERIC">
+				<Property Name="CUSTOM">Benutzerdefiniert</Property>
+				<Property Name="DEFAULT_0">lokales Währungsformat mit 2 NK</Property>
+				<Property Name="DEFAULT_1">lokales Währungsformat ohne NK</Property>
+				<Property Name="DEFAULT_2">Mengenformat mit 2 NK</Property>
+				<Property Name="DEFAULT_3">Mengenformat mit 3 NK</Property>
+				<Property Name="DEFAULT_4">Mengenformat ohne NK</Property>
+				<Property Name="DEFAULT_5">ganze Zahlen ohne Punkt</Property>
+				<Property Name="DEFAULT_6">Mengenformat mit 1 NK</Property>
+				<Property Name="DEFAULT_7">Mengenformat mit 6 NK</Property>
+			</Property>
+		</Property>
+	</Configuration>
+	<Configuration SCom="ApplicationProperties">
+		<Property Name="DefaultDateTimeFormat">dd.MM.yyyy</Property>
+		<!-- e.g. used for parsing of date strings that are not in a formatted
+			widget -->
+		<Property Name="DecimalSymbol">.</Property>
+		<!-- default decimal symbol for parsing numbers -->
+		<Property Name="ThousandSep">,</Property>
+		<!-- default grouping symbol, e.g. used when initially setting format_type
+			to custom -->
+		<Property Name="ValidationPreformatter" />
+		<!-- You can insert here the class of a special handler that is called
+			before a widget is validated and that may modify the widgets contents -->
+		<Property Name="AutomaticLDBTransfer">false</Property>
+		<!-- default is false, if set to true, sm_lstore/sm_allget will be called
+			automatically during screen exit/entry -->
+		<!-- Maps standard keys to userdefined keys. Property - Name to Property-Value.
+			The key string must have the following syntax: <modifiers>* (<typedID> |
+			<pressedReleasedID>) modifiers := shift | control | ctrl | meta | alt | altGraph
+			typedID := typed <typedKey> typedKey := string of length 1 giving Unicode
+			character. pressedReleasedID := (pressed | released) key key := KeyEvent
+			key code name, i.e. the name following "VK_". For example:"INSERT", "control
+			DELETE", "alt shift X", "alt shift released X", "typed a" for 'a' -->
+		<Property Name="KeyMapping">
+			<Property Name="F8">PF8</Property>
+			<Property Name="ctrl F1">ITSEL</Property>
+		</Property>
+		<!-- Backwards mapping for KeyMapping. -->
+		<Property Name="BackwardsKeyMapping">
+			<Property Name="PF8">F8</Property>
+			<Property Name="ITSEL">ctrl F1</Property>
+			<Property Name="TAB">TAB</Property>
+		</Property>
+		<Property Name="GlobalControlString">
+			<Property Name="alt F4">^jm_exit()</Property>
+			<Property Name="ctrl alt shift F12">^openSimpleTable()</Property>
+			<Property Name="ESCAPE">^sm_jclose()</Property>
+		</Property>
+		<Property Name="DefaultFormats">
+			<Property Name="DateTime">
+				<!-- Up to 10 default settings, defaults to "dd. MM. yyyy" -->
+				<!-- Format String as expected by java.text.SimpleDateFormat -->
+				<Property>dd.MM.yyyy HH:mm</Property>
+				<!-- %0d.%0m.%4y %0h:%0M -->
+				<Property>dd.MM.yyyy</Property> <!-- %0d.%0m.%4y -->
+				<Property>HH:mm</Property> <!-- %0h:%0M -->
+				<Property>dd.MM.yy</Property> <!-- %0d.%0m.%2y -->
+				<Property>ddd/MM/yy</Property> <!-- %3d/%0m/%2y -->
+				<Property>+d/yyyy</Property> <!-- %+d/%4y -->
+				<Property>dd.MM.yy</Property> <!-- %0d.%0m.%2y -->
+				<Property>ddMMyyyy</Property> <!-- %0d%0m%4y -->
+				<Property>M/d/yy HH:mm</Property> <!-- %m/%d/%2y %h:%0M -->
+				<Property>M/d/yy HH:mm</Property> <!-- %m/%d/%2y %h:%0M -->
+			</Property>
+			<Property Name="Numeric">
+				<!-- Up to 10 default settings, see below for default values -->
+				<Property>
+					<!-- DEFAULT_0=lokales Währungsformat mit 2 NK -> ",22." -->
+					<Property Name="Format">#,##0.00</Property>
+					<Property Name="CurrencySymbol" />
+					<Property Name="DecimalSymbol">,</Property>
+					<Property Name="ThousandSep">.</Property>
+				</Property>
+				<Property>
+					<!-- DEFAULT_1 = lokales Währungsformat ohne NK",00." -->
+					<Property Name="Format">#,##0</Property>
+					<Property Name="CurrencySymbol" />
+					<Property Name="DecimalSymbol">,</Property>
+					<Property Name="ThousandSep">.</Property>
+				</Property>
+				<Property>
+					<!-- DEFAULT_2 = Mengenformat mit 2 NK -> ",22." -->
+					<Property Name="Format">#,##0.00</Property>
+					<Property Name="CurrencySymbol" />
+					<Property Name="DecimalSymbol">,</Property>
+					<Property Name="ThousandSep">.</Property>
+				</Property>
+				<Property>
+					<!-- DEFAULT_3 = Mengenformat mit 3 NK -> ",33." -->
+					<Property Name="Format">#,##0.000</Property>
+					<Property Name="CurrencySymbol" />
+					<Property Name="DecimalSymbol">,</Property>
+					<Property Name="ThousandSep">.</Property>
+				</Property>
+				<Property>
+					<!-- DEFAULT_4 = Mengenformat ohne NK -> ",00." -->
+					<Property Name="Format">#,##0</Property> <!-- von #0. geändert da ansonsten in dem Feld ein , ensteht -wede- 02.12.2008 -->
+					<Property Name="CurrencySymbol" />
+					<Property Name="DecimalSymbol">,</Property>
+					<Property Name="ThousandSep">.</Property>
+				</Property>
+				<Property>
+					<!-- DEFAULT_5 = ganze Zahlen ohne Punkt -> ",00" -->
+					<Property Name="Format">#0</Property>
+					<Property Name="CurrencySymbol" />
+					<Property Name="DecimalSymbol" />
+					<Property Name="ThousandSep" />
+				</Property>
+				<Property>
+					<!-- DEFAULT_6 = Mengenformat mit 1 NK -> ",11." -->
+					<Property Name="Format">#,##0.0</Property>
+					<Property Name="CurrencySymbol" />
+					<Property Name="DecimalSymbol">,</Property>
+					<Property Name="ThousandSep">.</Property>
+				</Property>
+				<Property>
+					<!-- DEFAULT_7 = Mengenformat mit 6 NK -> ",66." -->
+					<Property Name="Format">#,##0.000000</Property>
+					<Property Name="CurrencySymbol" />
+					<Property Name="DecimalSymbol">,</Property>
+					<Property Name="ThousandSep">.</Property>
+				</Property>
+				<Property>
+					<!-- DEFAULT_8 = Mengenformat mit 2 NK -> ".22," -->
+					<Property Name="Format">#,##0.00</Property>
+					<Property Name="CurrencySymbol" />
+					<Property Name="DecimalSymbol">.</Property>
+					<Property Name="ThousandSep">,</Property>
+				</Property>
+				<Property>
+					<!-- DEFAULT_9 = Mengenformat mit 2 NK -> ".22," -->
+					<Property Name="Format">#,##0.00</Property>
+					<Property Name="CurrencySymbol" />
+					<Property Name="DecimalSymbol">.</Property>
+					<Property Name="ThousandSep">,</Property>
+				</Property>
+			</Property>
+		</Property>
+		<Property Name="ErrorMessages">
+			<Property Name="SCREEN_VALIDATION_FAILED_REQUIRED">Dateneingabe in Feld %Widget (%status_line_text) erforderlich!</Property>
+			<Property Name="SCREEN_SCREEN_NOT_FOUND">
+				<![CDATA[Die Maske <b>&lt;%Screen&gt;</b> wurde nicht gefunden.]]>
+			</Property>
+		</Property>
+		<Property Name="ErrorTitles">
+			<Property Name="SCREEN_VALIDATION_FAILED_REQUIRED">Fehler bei Validierung %Screen!%Widget(%status_line_text)</Property>
+			<Property Name="SCREEN_SCREEN_NOT_FOUND">Maske nicht gefunden!</Property>
+		</Property>
+		<Property Name="MessageBoxButtonTexts">
+			<Property Name="In Ordnung">Ok</Property>
+			<Property Name="Cancel">Abbrechen</Property>
+			<Property Name="Abort">Abbrechen</Property>
+			<Property Name="Retry">Wiederholen</Property>
+			<Property Name="Ignore">Ignorieren</Property>
+			<Property Name="Yes">Ja</Property>
+			<Property Name="No">Nein</Property>
+			<Property Name="Yes to all">Ja für Alle</Property>
+			<Property Name="No to all">Nein für Alle</Property>
+			<Property Name="OK to all">Ok für Alle</Property>
+			<Property Name="Help">Hilfe</Property>
+		</Property>
+		<Property Name="TurnOfCastByRounding">true</Property>
+	</Configuration>
+	<Configuration SCom="SystemFunctionManager">
+		<Property Name="AbortOnLoadFailure">TRUE</Property> <!-- If set to true, Server won't startup if an error occurs during loading
+			of modules, if false, only an error will be logged, default value is FALSE -->
+		<Property Name="systemModules">
+			<!-- defines which system function module classes should be loaded. This
+				property contains two kind of children. The properties with name 'Repository'
+				define the location of the repository and classes which to load from this
+				repository. Other entries consist of an nameless property containing a class
+				name. The named class must be derived from com.mdsws.barracuda.system.functions.BaseSystemModuleCode. -->
+
+			<!--<Property>com.mdsws.barracuda.server.library.SystemConstants</Property> -->
+			<!-- Repository - Property defines which system function module classes
+				should be loaded from the repository. One child property with name 'URL'
+				must contain the location (url) of the repository. Other entries consist
+				of an nameless property containing a class name. The named class must be
+				derived from com.mdsws.barracuda.system.functions.BaseSystemModuleCode. -->
+			<!-- <Property Name="Repository"> <Property Name="URL">file:../BDistribution/lib</Property>
+				<Property>com.mdsws.barracuda.server.library.SystemConstants</Property> </Property> -->
+
+			<!-- <Property Name="Repository"> </Property> -->
+			<Property Name="Repository">
+				<Property Name="URL">file:lib</Property>
+				<Property Name="URL">file:lib/barracuda</Property>
+				<Property>de.cerpsw.sysfunction.base.UnoAliasPatcher</Property>
+				<Property>de.cerpsw.sysfunction.base.UnoSysfunctions</Property>
+				<Property>de.cerpsw.sysfunction.base.UnoMiscfunctions</Property>
+				<Property>de.cerpsw.sysfunction.jobserver.UnoComfunctions</Property>
+				<Property>de.cerpsw.reportsrv.UnoReportGenerator</Property>
+				<Property>de.cerpsw.unoprintsrv.client.UnoPrintFunction</Property>
+				<Property>de.cerpsw.sysfunction.dms.UnoDmsFunctions</Property>
+				<Property>de.cerpsw.sysfunction.base.UnoChatFunctions</Property>
+
+				<!-- Umstellung maven -->
+				<Property>de.cerpsw.sysfunction.cdt.UnoCdtFunctions</Property>
+				<Property>de.cerpsw.sysfunction.php.UnoPhpFunctions</Property>
+				<Property>de.cerpsw.sysfunction.fibu.UnoFibuFunctions</Property>
+				<Property>de.cerpsw.sysfunction.zfp.UnoZfpvfunctions</Property>
+				<Property>de.cerpsw.sysfunction.vcard.UnoVCardFunctions</Property>
+				<Property>de.cerpsw.sysfunction.security.UnoSecurityfunctions</Property>
+				<Property>de.cerpsw.sysfunction.license.UnoLicensesFunctions</Property>
+				<Property>de.cerpsw.sysfunction.converter.UnoConverterFunctions</Property>
+				<Property>de.cerpsw.sysfunction.fileindexer.UnoFileIndexerfkt</Property>
+				<Property>de.cerpsw.sysfunction.indexer.UnoObjektIndexerfkt</Property>
+				<Property>de.cerpsw.sysfunction.mail.UnoMailfunctions</Property>
+				<Property>de.cerpsw.sysfunction.cti.UnoCtiFunctions</Property>
+				<Property>de.cerpsw.sysfunction.base.UnoSmFunctions</Property>
+				<Property>de.cerpsw.sysfunction.base.UnoCronFunctions</Property>
+				<Property>de.cerpsw.sysfunction.transfer.UnoTransferFunctions</Property>
+				<Property>de.cerpsw.sysfunction.report.UnoReportFunctions</Property>
+				<Property>de.cerpsw.sysfunction.converter.UnoDatabaseRelations2Image</Property>
+				<Property>de.cerpsw.sysfunction.converter.UnoPDFBoxUtils</Property>
+
+				<!-- REST Client -->
+				<Property>de.cerpsw.cpro.jackson.datatype.cdt.JsonFunctions</Property>
+				<Property>de.cerpsw.cpro.restclient.JsonNodeFunctions</Property>
+				<Property>de.cerpsw.cpro.restclient.MapFunctions</Property>
+				<Property>de.cerpsw.cpro.restclient.RestClientFunctions</Property>
+				<Property>de.cerpsw.cpro.restclient.MiscSystemFunctions</Property>
+				<Property>de.cerpsw.cpro.restclient.crypto.CryptoFunctions</Property>
+
+				<!-- HAENEL Client -->
+				<Property>de.cerpsw.cpro.haenelapi.client.HaenelClientFunctions</Property>
+
+				<Property>de.cerpsw.cpro.crypto.api.signing.SignAndVerifyFunctions</Property>
+				<Property>de.cerpsw.cpro.integra.profile.client.ProfileClientFunctions</Property>
+			</Property>
+		</Property>
+	</Configuration>
+	<Configuration SCom="FileService">
+		<Property Name="UseDirectoriesFirst">true</Property>
+		<Property Name="directories">
+			<!-- defines which filesystem directories are used
+				by the fileservice for its file lookup. -->
+			<Property>./catuno_start.jpl</Property>
+		</Property>
+		<Property Name="libraries">
+			<!-- defines which libraries are used by the fileservice
+				for its file lookup. -->
+			<!-- <Property>lib1.zip</Property> -->
+		</Property>
+	</Configuration>
+	<Configuration SCom="Jpl2JavaCompiler">
+		<!-- If GenerateJplBlocks is set to true, the Compiler will generate a
+			java block '{' '}' for each Jpl block (not necessary, but might make code
+			more recognizable) -->
+		<Property Name="GenerateJplBlocks">false</Property>
+
+		<!-- If IgnoreDeprecations is set to false, Deprecations will cause the
+			compilation to fail, otherwise only a warning will be generated in the log -->
+		<Property Name="IgnoreDeprecations">true</Property>
+		<!-- If ExtendUsedObjects is set to true, generated code will try to use
+			Value-Objects for as long as possible, if false, generated code will switch
+			to Java-primitives as soon as possible (might be used to finetune generated
+			code) -->
+		<Property Name="ExtendUsedObjects">true</Property>
+		<!-- TemporaryDirectory specifies the directory to use for temporary files
+			that store javac output. If it is not set, the default Java temporary directory
+			will be used -->
+		<!-- <Property Name="TemporaryDirectory">tmp</Property> -->
+		<!-- ChecksumMessageDigest specifies the Algorithm used by the compiler
+			to generate checksums over Jpl-files (can be used by developers for an additional
+			check (besides version numbering) if code has changed. The Algorithm specified
+			here must be a valid parameter to java.security.MessageDigest.getInstance() -->
+		<Property Name="ChecksumMessageDigest">MD5</Property>
+
+		<!-- Enables/Disables generation of command line information in compiled
+			java code for modules and screens. Default value is TRUE -->
+		<Property Name="AddCommandLineInfo">true</Property>
+		<!-- If this option is set to true, all keywords will be checked case insensitive
+			by the compiler, if cleared, only lower case is allowed: example if set:
+			FOR == For == for (keyword of for-statement) -->
+		<Property Name="KeywordsCaseInsensitive">true</Property>
+		<!-- This mode defines the target platform at which the code is indented
+			to be executed. When ever the langauge is enhanced with new features that
+			will not work in an older installation the minor number is changed. By using
+			a lower compatibilty it is possible to compile for a different platform than
+			is one. If the Mode is not set - the regular compilation will be used. The
+			mode can be specified as an enum value as defined in com.mdsws.barracuda.server.compiler.CompatibilityMode.
+			The prefix "Mode_" can be omitted, and every occurring dot (".") will be
+			replaced by an underscore ("_"), so it is valid to specifiy "1.2" for Mode_1_2 -->
+		<!-- UPDATE: Internal versioning of compiled classes has been introduced,
+			so old compatibility mode MODE_1_2 is now version "1.0", and mode MODE_1_3
+			is now version "2.0". The old descriptions can still be used and will be
+			mapped to the new versioning system. -->
+		<Property Name="CompatibilityMode">5.0.0</Property>
+
+		<!-- Generated Beans are generated into this directory tree. -->
+		<Property Name="GeneratedBeanDirectory" />
+		<!-- Generated Beans are written into this package. -->
+		<Property Name="GeneratedBeanPackage" />
+		<!-- Suffix for the generated bean class name. -->
+		<Property Name="GeneratedBeanSuffix">_Bean</Property>
+		<!-- Generated Services are generated into this directory tree. -->
+		<Property Name="GeneratedServiceDirectory" />
+		<!-- The prefix that is used for fields of generated JavaBeans can be set
+			with the following property. Default is no prefix. If the prefix ends with
+			a letter, the first letter of the field name itself will be capitalized,
+			e.g. "address" with prefix "f" => "fAddress" -->
+		<Property Name="GeneratedBeanFieldPrefix">f</Property>
+	</Configuration>
+	<Configuration SCom="CodeCache">
+		<Property Name="SourceFileEncoding">UTF-8</Property> <!-- Defines the character encoding that is used for reading JPL source files,
+			default is "UTF-8" -->
+		<Property Name="RecompilesAfterSystemModification">false</Property> <!-- Defines if jpl files should be recompiled after system modifications,
+			default is true -->
+		<Property Name="DisplayCompilationMessages">true</Property> <!-- If set to true, the compilation process will be displayed in the status
+			bar, default is false -->
+		<Property Name="VersionChecking">none</Property>
+		<!-- Can be set to none, warning, error, default is none, on version difference
+			between runtime and compiled code will log warning or fail to load with error -->
+		<!-- NOTE: none is only available during initial release, future releases
+			will allow only warning and error -->
+	</Configuration>
+	<Configuration SCom="BundleManager">
+		<!-- If ErrorOnBundleNotFound is set to true, receive bundle will generate
+			an error if no (named or unnamed) bundle is found. If set to false, the receive
+			statement will do nothing (like in Panther) -->
+		<Property Name="ErrorOnBundleNotFound">false</Property>
+		<!-- DefaultMaxBundles defines the default limit of bundles that will be
+			stored by the BundleManager. If more bundles than that are sent without being
+			received somewhere, the oldest one(s) will be removed. -->
+		<Property Name="DefaultMaxBundles">20</Property>
+		<!-- If IgnoreReceiveOnReadOnlyElement is set to true, receive bundle will
+			generate no error if a receive is made on an element that is readonly. Instead
+			the read will be silently ignored (like in Panther). If set to false, receive
+			on a read-only element will generate an error. The default value is true -->
+		<Property Name="IgnoreReceiveOnReadOnlyElement">false</Property>
+	</Configuration>
+	<Configuration SCom="DbmsScom">
+		<!-- If activated the dbms system will not generate an error if a readonly
+			accessor should be overwritten, but in neither way could it be changed either -->
+		<Property Name="IgnoreReadOnlyAccessors">true</Property>
+		<Property Name="ClassPathSeparator">,</Property> <!-- if no character is given us system
+			default -->
+		<Property Name="AliasAutoNameResolution">
+			<Property>Exact</Property>
+			<Property>LowerCase</Property>
+			<!-- <Property>UpperCase</Property> <Property>SelectClause</Property> -->
+		</Property>
+		<Property Name="Engines">
+			<!-- Engines defined for Jpl -->
+			<!-- <Property Name="HSql"> -->
+			<!-- the class path may contain more than one entry separated file path
+				separator, it may be relative path to server directory, if the property is
+				not defined the standard class path is used -->
+			<!-- <Property Name="DriverClassPath">dblib/hsqldb.jar</Property> -->
+			<!-- <Property Name="DriverClass">org.hsqldb.jdbcDriver</Property> Jdbc
+				Driver -->
+			<!-- <Property Name="DbUrl">jdbc:hsqldb:unittest</Property> Jdbc Url -->
+			<!-- <Property Name="JavaDateTimeFormat">yyyy-MM-dd HH:mm:ss.SSS</Property> -->
+			<!-- <Property Name="DBDateTimeFunction">java.sql.Timestamp.valueOf('{datetime}000000')</Property> -->
+			<!-- </Property> -->
+			<!-- <Property Name="TestHSql"> -->
+			<!-- <Property Name="DriverClass">org.hsqldb.jdbcDriver</Property> -->
+			<!-- <Property Name="DbUrl">jdbc:hsqldb:{dbparam}</Property> -->
+			<!-- </Property> -->
+			<!-- <Property Name="MySql"> -->
+			<!-- <Property Name="DriverClassPath">dblib/mysql-connector-java-5.0.4-bin.jar</Property> -->
+			<!-- <Property Name="DriverClass">com.mysql.cj.jdbc.Driver</Property> -->
+			<!-- <Property Name="DbUrl"><![CDATA[jdbc:mysql://{host}/{database}?user={user}&password={password}]]></Property> -->
+			<!-- The following two properties are optional, the default value if not
+				present is that of MySql (which is the same as in java.sql.Timestamp) -->
+			<!-- These 2 properties are used to insert a datetime value into the sql
+				string: -->
+			<!-- - the first generates a string representation of the java.sql.Timestamp -->
+			<!-- - the second determines the string to be inserted into the sql statement -->
+			<!-- - in the second the special string {datetime} must be present exactly
+				once, it determines the position where the generated datetime string will
+				be inserted -->
+			<!-- -->
+			<!-- <Property Name="JavaDateTimeFormat">yyyy-MM-dd HH:mm:ss</Property>
+				Format used by SimpleDateFormat to generate string representation of Timestamp
+				to store in DB -->
+			<!-- <Property Name="DBDateTimeFunction">'{datetime}'</Property> String
+				that will be inserted for a :+-operator in the sql statement string -->
+			<!-- </Property> -->
+			<!-- <Property Name="Informix"> -->
+			<!-- <Property Name="DriverClassPath">dblib/ifxjdbc.jar</Property> -->
+			<!-- <Property Name="DriverClass">com.informix.jdbc.IfxDriver</Property> -->
+			<!-- <Property Name="DbUrl">jdbc:informix-sqli:bopendb1.microdoc.de:1526:informixserver=ol1</Property> -->
+			<!-- <Property Name="JavaDateTimeFormat">yyyy-mm-dd</Property> default
+				value for informix, may be changed using DBDATE or GLS_DATE for informix
+				DB -->
+			<!-- <Property Name="DBDateTimeFunction">EXTEND(DATE('{datetime}'), YEAR
+				TO SECOND)</Property> -->
+			<!-- </Property> -->
+			<!-- <Property Name="Oracle"> -->
+			<!-- <Property Name="DriverClassPath">dblib/ojdbc14.jar</Property> -->
+			<!-- <Property Name="DriverClass">oracle.jdbc.OracleDriver</Property> -->
+			<!-- <Property Name="DbUrl">jdbc:oracle:thin:@svn.p1.microdoc.com:1521:orcl</Property> -->
+			<!-- <Property Name="JavaDateTimeFormat">yyyy-MM-dd HH:mm:ss</Property> -->
+			<!-- <Property Name="DBDateTimeFunction">to_timestamp('{datetime}','YYYY-MM-DD
+				HH24:MI:SS')</Property> or to_date ? -->
+			<!-- </Property> -->
+			<Property Name="SQLSRV">
+				<Property Name="DriverClassPath">lib/de.cerpsw.sysfunction/mssql-jdbc-12.2.0.jre8.jar</Property>
+				<Property Name="DriverClass">com.microsoft.sqlserver.jdbc.SQLServerDriver</Property>
+				<Property Name="DbUrl">jdbc:sqlserver://{dbinstance};Database={dbname};encrypt=true;trustServerCertificate=true</Property>
+				<Property Name="JavaDateTimeFormat">dd.MM.yyyy</Property>
+				<!-- default value for SQLSERVER, may be changed using DBDATE or GLS_DATE
+					for informix DB -->
+				<Property Name="DBDateTimeFunction">'{datetime}'</Property>
+			</Property>
+			<Property Name="informix">
+				<Property Name="DriverClassPath">lib/de.cerpsw.sysfunction/jdbc-4.50.10.jar</Property>
+				<Property Name="DriverClass">com.informix.jdbc.IfxDriver</Property>
+				<Property Name="DbUrl">jdbc:informix-sqli://{dbserver}:{dbport}/{dbname}:informixserver={dbinstance};CLIENT_LOCALE={dbclientlocale};DB_LOCALE={dblocale};DBDATE=DMY4.;DBMONEY=.</Property>
+				<Property Name="JavaDateTimeFormat">dd.MM.yyyy</Property>
+				<!-- default value for informix, may be changed using DBDATE or GLS_DATE
+					for informix DB -->
+				<Property Name="DBDateTimeFunction">EXTEND(DATE('{datetime}'), YEAR TO SECOND)</Property>
+			</Property>
+			<Property Name="MySql">
+				//
+				<Property Name="DriverClassPath">lib/de.cerpsw.sysfunction/mysql-connector-java-8.0.33.jar</Property>
+				<!--<Property Name="DriverClassPath">lib/jdbc/mariadb-java-client-2.0.2.jar</Property>-->
+				<Property Name="DriverClass">com.mysql.cj.jdbc.Driver</Property>
+				<Property Name="DbUrl">
+					<![CDATA[jdbc:mysql://{dbserver}:{dbport}/{dbname}?user={user}&password={password}]]>
+				</Property>
+				<!-- The following two properties are optional, the default value if
+					not present is that of MySql (which is the same as in java.sql.Timestamp) -->
+				<!-- These 2 properties are used to insert a datetime value into the
+					sql string: -->
+				<!-- - the first generates a string representation of the java.sql.Timestamp -->
+				<!-- - the second determines the string to be inserted into the sql statement -->
+				<!-- - in the second the special string {datetime} must be present exactly
+					once, it determines the position where the generated datetime string will
+					be inserted -->
+				<Property Name="JavaDateTimeFormat">yyyy-MM-dd HH:mm:ss</Property> <!-- Format used by SimpleDateFormat to generate string representation of
+					Timestamp to store in DB -->
+				<Property Name="DBDateTimeFunction">'{datetime}'</Property> <!-- String that will be inserted for a :+-operator in the sql statement
+					string -->
+			</Property>
+			<Property Name="AS400">
+				<Property Name="DriverClassPath">lib/jdbc/jdbc.jtAS400.jar</Property>
+				<Property Name="DriverClass">com.ibm.as400.access.AS400JDBCDriver</Property>
+				<Property Name="DbUrl">jdbc:as400://{dbinstance};naming=system;libraries={dbname}</Property>
+				<Property Name="JavaDateTimeFormat">dd.MM.yyyy</Property>
+				<Property Name="DBDateTimeFunction">'{datetime}'</Property>
+			</Property>
+			<Property Name="POSTGRES">
+				<Property Name="DriverClassPath">lib/de.cerpsw.sysfunction/postgresql-42.2.0.jar</Property>
+				<Property Name="DriverClass">org.postgresql.Driver</Property>
+				<Property Name="DbUrl">jdbc:postgresql://{dbserver}:{dbport}/{dbname}</Property>
+				<Property Name="JavaDateTimeFormat">dd.MM.yyyy</Property>
+				<Property Name="DBDateTimeFunction">'{datetime}'</Property>
+			</Property>
+			<Property Name="ORACLE">
+				<Property Name="DriverClassPath">lib/de.cerpsw.sysfunction/ojdbc8-18.3.0.0.jar</Property>
+				<Property Name="DriverClass">oracle.jdbc.OracleDriver</Property>
+				<Property Name="DbUrl">jdbc:oracle:thin:@{dbserver}:{dbport}:{dbinstance}</Property>
+				<Property Name="JavaDateTimeFormat">dd.MM.yyyy</Property>
+				<Property Name="DBDateTimeFunction">'{datetime}'</Property>
+				<!-- <Property Name="DBDateTimeFunction">to_timestamp('{datetime}','YYYY-MM-DD
+					HH24:MI:SS')</Property> <Property Name="JDBCUseTimestamp">true</Property>
+					This property can be used to indicate if, when setting datetime-values in
+					the JDBC-driver, se tTimestamp() (default) should be used instead of setDate().
+					This flag can also be specified in the declare connection statement as a
+					property <Property Name="InsertParametersAsLiterals">true</Property> -->
+			</Property>
+		</Property>
+	</Configuration>
+	<Configuration SCom="ControlStringManager">
+		<Property Name="CacheSize">1000</Property>
+		<!-- Maximum number of control strings cached for all session together,
+			cahced control strings are not recompiled -->
+		<Property Name="DebugLevel">RUNTIME_ERROR</Property> <!-- SILENT(default), SYNTAX_ERROR,
+			RUNTIME_ERROR -->
+	</Configuration>
+	<Configuration SCom="VariableManager">
+		<Property Name="globalConstants">
+			<Property Name="APP0">24578</Property>
+		</Property>
+	</Configuration>
+	<Configuration SCom="LDBManager">
+		<!-- If CompileLDBs is set to true, the ScreenCompiler is used, i.e. each
+			LDB is compiled into a java class and the screen module and validation codes
+			of the widgets are generated as inner classes. If CompileLDBs is false, the
+			ScreenLoader is used, i.e. a LDB is directly generated from its XML description.
+			Code will not be compiled (not used in LDBs) and unsed properties will be
+			skipped (currently this is only the layout information) -->
+		<Property Name="CompileLDBs">false</Property> <!-- default is true -->
+	</Configuration>
+	<Configuration SCom="ScreenManager">
+		<Property Name="VersionChecking">none</Property>
+		<!-- If CompileScreens is set to true, the ScreenCompiler is used, i.e.
+			each screen is compiled into a java class and the screen module and validation
+			codes of the widgets are generated as inner classes. If CompileScreens is
+			false, the ScreenLoader is used, i.e. a screen is directly generated from
+			its XML description and only code is compiled into (normal) classes named
+			"<screen>_<widget>.(java|class)" -->
+		<Property Name="CompileScreens">false</Property> <!-- default is true -->
+		<!-- In DisplayClasses the list of possible values for the CLASS-Property
+			is specified. In addition to the values here, that property also allows an
+			empty value(""), which is also the default value for that property -->
+		<Property Name="DisplayClasses">
+			<Property>-none-</Property>
+			<Property>-default-</Property>
+			<Property>nur_anzeigen</Property>
+			<Property>Anlage</Property>
+			<Property>Daten</Property>
+			<Property>change_button</Property>
+			<Property>clear_button</Property>
+			<Property>close_button</Property>
+			<Property>continue_button</Property>
+			<Property>continue_view_button</Property>
+			<Property>copy_button</Property>
+			<Property>delete_button</Property>
+			<Property>search_view</Property>
+			<Property>new_button</Property>
+			<Property>non_updatable</Property>
+			<Property>primary_key</Property>
+			<Property>save_button</Property>
+			<Property>updatable</Property>
+			<Property>view_button</Property>
+			<Property>view_once_button</Property>
+		</Property>
+		<!-- StorabeProperties defines which properties will be stored by default
+			when the property state of a widget is saved. NOTE: Properties that are not
+			defined for a specific widget or that are invalid (e.g. num_occurrences)
+			will be silently ignored. -->
+		<Property Name="StorableProperties">
+			<!-- This list is meant only as an example. Note that if more properties
+				are specified here, more memory is required to store the states of widgets -->
+			<Property>ACTIVE</Property>
+			<Property>BG_COLOR</Property>
+			<Property>CLEARING_PROTECT</Property>
+			<Property>FG_COLOR</Property>
+			<Property>FOCUS_PROTECTION</Property>
+			<Property>HIDDEN</Property>
+			<Property>INPUT_PROTECTION</Property>
+			<Property>MDT</Property>
+			<Property>NO_VALIDATION</Property>
+			<Property>REQUIRED</Property>
+			<Property>SELECTED</Property>
+			<Property>VALIDED</Property>
+		</Property>
+		<Property Name="ScreenExtensions">.xml,.bsc,.itm,.ldb,.rlb,.ldbi,.jam</Property> <!--
+			List of file extensions use to open a screen -->
+	</Configuration>
+	<Configuration SCom="ModuleManager">
+		<Property Name="CustomizationSuffix">_extend,_C$(UNOFIRMA), _M$(GL_MANDANT), _customer</Property>
+	</Configuration>
+	<Configuration SCom="MessageManager">
+		<Property Name="fileName">msgfile.txt</Property>
+		<!-- <Property Name="fileName">msgfile</Property> -->
+		<!-- <Property Name="fileName">msgfile1</Property> -->
+	</Configuration>
+	<Configuration SCom="PluginManager">
+		<Property Name="PluginLocation">com.mdsws.barracuda.base.resource.DummyLocation</Property> <!-- fully qualified class name for a class locating the plugin resources -->
+		<Property Name="PluginLocationProperties">
+			<!-- Properties that will be added to the System.Properties for configuring
+				the loactor -->
+			<Property Name="PLUGIN_URL">.</Property> <!-- url for looking up the plugins -->
+		</Property>
+	</Configuration>
+	<Configuration SCom="ProfilerManager">
+		<Property Name="ProfilerClass">com.mdsws.profiling.OverlappingProfiler</Property>
+		<Property Name="MemoryProfilingEnabled">false</Property> <!--default: false, memory profiling is enabled if true and ProfilerManager
+			is listed as SComs to start -->
+		<Property Name="MemoryProfilingInterval">10000000</Property> <!--interval in milliseconds for memory profiling, default: 60000 ( == 1
+			minute) -->
+		<Property Name="MemoryProfilingFile">memory.csv</Property> <!--file name (absolute or relative to BARRACUDA_HOME) for memory profiling
+			output (CSV with semi-colon as delimiter), default "memory.out" -->
+	</Configuration>
+	<Configuration SCom="FocusManager">
+		<!-- This property can be used to specify a limit on moveFocus loop iterations
+			that are execute each time the focus moves. If it is set to a value <= 0
+			no limit will be used (the loop may continue forever). NOTE: It is still
+			possible to create endless loops, e.g. directly in the code (a never ending
+			for-loop) or using control-string execution (a method calls jm_keys to execute
+			itself later) -->
+		<Property Name="MoveFocusLoopLimit">1000</Property>
+		<!-- If this is set to true (which is default), a message box will be displayed
+			if a moveFocus loop is aborted do to too many iterations. If it is set to
+			false, the loop is silently aborted. -->
+		<Property Name="DisplayMoveFocusAbortMessages">true</Property>
+	</Configuration>
+	<Configuration SCom="JobServerSCom">
+		<Property Name="ConfigurationsFile">${BARRACUDA_HOME}/../de.cerpsw.user.runtime/jobserver.config.xml</Property>
+	</Configuration>
+	<CustomConfiguration Name="../de.cerpsw.user.runtime/de.cerpsw.user.runtime.config.xml" />
+	<CustomConfiguration Name="../de.cerpsw.standard/de.cerpsw.standard.config.xml" />
+</Barracuda>

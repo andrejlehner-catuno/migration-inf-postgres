@@ -1,0 +1,6 @@
+migration/
+db/
+db.zip
+__pycache__/
+*.pyc
+*.log
