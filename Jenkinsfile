@@ -108,11 +108,59 @@ pipeline {
         
         success {
             echo '✓✓✓ MIGRATION SUCCESSFUL! ✓✓✓'
+            
+            emailext (
+                subject: "✅ CATUNO Migration SUCCESSFUL - Build #${env.BUILD_NUMBER}",
+                body: """
+Migration completed successfully!
+
+Build Number: ${env.BUILD_NUMBER}
+Duration: ${currentBuild.durationString}
+Date: ${new Date()}
+
+Build URL: ${env.BUILD_URL}
+Console Output: ${env.BUILD_URL}console
+
+Logs are archived in Jenkins.
+
+---
+CATUNO ERP Development Team
+                """,
+                to: 'andrej.lehner@catuno.de',
+                mimeType: 'text/plain'
+            )
         }
         
         failure {
             echo '✗✗✗ MIGRATION FAILED! ✗✗✗'
-            // Hier könnte Email-Benachrichtigung hin
+            
+            emailext (
+                subject: "❌ CATUNO Migration FAILED - Build #${env.BUILD_NUMBER}",
+                body: """
+⚠️ MIGRATION FAILED! ⚠️
+
+Build Number: ${env.BUILD_NUMBER}
+Duration: ${currentBuild.durationString}
+Date: ${new Date()}
+
+Build URL: ${env.BUILD_URL}
+Console Output: ${env.BUILD_URL}console
+
+Please check the logs immediately!
+
+Possible causes:
+- Database connection issues
+- DECIMAL type conversion errors
+- Insufficient disk space
+- Network problems
+
+---
+CATUNO ERP Development Team
+                """,
+                to: 'andrej.lehner@catuno.de',
+                mimeType: 'text/plain',
+                attachLog: true
+            )
         }
     }
 }
