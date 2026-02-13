@@ -1,5 +1,7 @@
 pipeline {
-    agent any
+    agent {
+        label 'windows'
+    }
     
     environment {
         JAVA_HOME = 'C:\\baustelle_8.6\\jdk-17.0.11.9-hotspot'
