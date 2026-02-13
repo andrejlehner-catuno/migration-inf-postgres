@@ -14,8 +14,8 @@ pipeline {
     options {
         // Behalte die letzten 30 Builds
         buildDiscarder(logRotator(numToKeepStr: '30'))
-        // Timeout nach 2 Stunden
-        timeout(time: 2, unit: 'HOURS')
+        // Timeout nach 3 Stunden
+        timeout(time: 3, unit: 'HOURS')
         // Timestamps in Logs
         timestamps()
     }
@@ -58,12 +58,52 @@ pipeline {
             }
         }
         
-        stage('Run Migration') {
+        stage('Phase 1: Data Migration') {
             steps {
-                echo 'Starting PostgreSQL migration...'
+                echo 'Starting PostgreSQL data migration...'
                 bat '''
                     set JAVA_HOME=%JAVA_HOME%
                     python migrate_full_informix_to_postgres.py
+                '''
+            }
+        }
+        
+        stage('Phase 2a: Primary Keys') {
+            steps {
+                echo 'Migrating Primary Keys...'
+                bat '''
+                    set JAVA_HOME=%JAVA_HOME%
+                    python migrate_primary_keys.py
+                '''
+            }
+        }
+        
+        stage('Phase 2b: Indexes') {
+            steps {
+                echo 'Migrating Indexes...'
+                bat '''
+                    set JAVA_HOME=%JAVA_HOME%
+                    python migrate_indexes.py
+                '''
+            }
+        }
+        
+        stage('Phase 2c: Foreign Keys') {
+            steps {
+                echo 'Migrating Foreign Keys...'
+                bat '''
+                    set JAVA_HOME=%JAVA_HOME%
+                    python migrate_foreign_keys.py
+                '''
+            }
+        }
+        
+        stage('QA Validation') {
+            steps {
+                echo 'Running comprehensive QA validation...'
+                bat '''
+                    set JAVA_HOME=%JAVA_HOME%
+                    python qa_validation.py
                 '''
             }
         }
@@ -81,6 +121,23 @@ pipeline {
                         // Fail build if too many failures
                         if (checkpoint.failed_tables.size() > 100) {
                             error("Too many failed tables: ${checkpoint.failed_tables.size()}")
+                        }
+                    }
+                    
+                    // Check QA report
+                    def qaReports = findFiles(glob: 'migration/qa_report_*.json')
+                    if (qaReports.length > 0) {
+                        def latestQA = qaReports[-1]
+                        def qaData = readJSON file: latestQA.path
+                        
+                        echo "QA Tests: ${qaData.summary.total_tests}"
+                        echo "Passed: ${qaData.summary.passed}"
+                        echo "Failed: ${qaData.summary.failed}"
+                        echo "Warnings: ${qaData.summary.warnings}"
+                        
+                        // Fail build if QA failed
+                        if (qaData.summary.failed > 0) {
+                            error("QA Validation failed: ${qaData.summary.failed} tests")
                         }
                     }
                 }
@@ -102,46 +159,97 @@ pipeline {
     
     post {
         always {
-            echo 'Archiving migration logs...'
-            archiveArtifacts artifacts: 'migration/*.log, migration/checkpoint.json', allowEmptyArchive: true
+            echo 'Archiving migration logs and reports...'
+            archiveArtifacts artifacts: '''
+                migration/*.log, 
+                migration/checkpoint.json,
+                migration/*_checkpoint.json,
+                migration/qa_report_*.txt,
+                migration/qa_report_*.json
+            ''', allowEmptyArchive: true
         }
         
         success {
             echo '✓✓✓ MIGRATION SUCCESSFUL! ✓✓✓'
             
-            emailext (
-                subject: "✅ CATUNO Migration SUCCESSFUL - Build #${env.BUILD_NUMBER}",
-                body: """
+            script {
+                // Get QA summary
+                def qaReports = findFiles(glob: 'migration/qa_report_*.json')
+                def qaSummary = "No QA report found"
+                
+                if (qaReports.length > 0) {
+                    def latestQA = qaReports[-1]
+                    def qaData = readJSON file: latestQA.path
+                    qaSummary = """
+QA Validation Results:
+- Total Tests: ${qaData.summary.total_tests}
+- Passed: ${qaData.summary.passed} ✓
+- Failed: ${qaData.summary.failed} ✗
+- Warnings: ${qaData.summary.warnings} ⚠
+"""
+                }
+                
+                emailext (
+                    subject: "✅ CATUNO Migration SUCCESSFUL - Build #${env.BUILD_NUMBER}",
+                    body: """
 Migration completed successfully!
 
 Build Number: ${env.BUILD_NUMBER}
 Duration: ${currentBuild.durationString}
 Date: ${new Date()}
 
+${qaSummary}
+
 Build URL: ${env.BUILD_URL}
 Console Output: ${env.BUILD_URL}console
+Artifacts: ${env.BUILD_URL}artifact/
 
 Logs are archived in Jenkins.
 
 ---
 CATUNO ERP Development Team
-                """,
-                to: 'andrej.lehner@catuno.de',
-                mimeType: 'text/plain'
-            )
+                    """,
+                    to: 'andrej.lehner@catuno.de',
+                    mimeType: 'text/plain'
+                )
+            }
         }
         
         failure {
             echo '✗✗✗ MIGRATION FAILED! ✗✗✗'
             
-            emailext (
-                subject: "❌ CATUNO Migration FAILED - Build #${env.BUILD_NUMBER}",
-                body: """
+            script {
+                // Try to get failure reason
+                def failureReason = "Unknown error"
+                
+                // Check for checkpoint failures
+                if (fileExists('migration/checkpoint.json')) {
+                    def checkpoint = readJSON file: 'migration/checkpoint.json'
+                    if (checkpoint.failed_tables && checkpoint.failed_tables.size() > 0) {
+                        failureReason = "Data migration failed for ${checkpoint.failed_tables.size()} tables"
+                    }
+                }
+                
+                // Check for QA failures
+                def qaReports = findFiles(glob: 'migration/qa_report_*.json')
+                if (qaReports.length > 0) {
+                    def latestQA = qaReports[-1]
+                    def qaData = readJSON file: latestQA.path
+                    if (qaData.summary.failed > 0) {
+                        failureReason = "QA Validation failed: ${qaData.summary.failed} tests"
+                    }
+                }
+                
+                emailext (
+                    subject: "❌ CATUNO Migration FAILED - Build #${env.BUILD_NUMBER}",
+                    body: """
 ⚠️ MIGRATION FAILED! ⚠️
 
 Build Number: ${env.BUILD_NUMBER}
 Duration: ${currentBuild.durationString}
 Date: ${new Date()}
+
+Failure Reason: ${failureReason}
 
 Build URL: ${env.BUILD_URL}
 Console Output: ${env.BUILD_URL}console
@@ -151,16 +259,20 @@ Please check the logs immediately!
 Possible causes:
 - Database connection issues
 - DECIMAL type conversion errors
+- Primary Key conflicts
+- Index creation failures
+- QA validation failures
 - Insufficient disk space
 - Network problems
 
 ---
 CATUNO ERP Development Team
-                """,
-                to: 'andrej.lehner@catuno.de',
-                mimeType: 'text/plain',
-                attachLog: true
-            )
+                    """,
+                    to: 'andrej.lehner@catuno.de',
+                    mimeType: 'text/plain',
+                    attachLog: true
+                )
+            }
         }
     }
 }
