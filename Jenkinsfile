@@ -9,8 +9,8 @@ pipeline {
         WORKING_DIR = 'C:\\postgres'
         PYTHONIOENCODING = 'utf-8'
         PYTHONUNBUFFERED = '1'
-        // Hier deine E-Mail eintragen:
-        MAIL_TO = 'andrej.lehner@catuno.de'
+        // Hier die Ziel-E-Mail (Gmail oder Catuno) eintragen:
+        MAIL_TO = 'geminiisteintrottel@gmail.com' 
     }
     
     stages {
@@ -27,7 +27,7 @@ pipeline {
         
         stage('Phase 2b: Indexes') {
             steps {
-                echo 'Erstelle Datenbank-Indizes (kann einen Moment dauern)...'
+                echo 'Erstelle Datenbank-Indizes...'
                 bat """
                     set JAVA_HOME=${env.JAVA_HOME}
                     cd /d "${env.WORKING_DIR}"
@@ -73,7 +73,8 @@ pipeline {
                  body: "Der Build ist fehlgeschlagen. Bitte prüfe die Konsole in Jenkins: ${env.BUILD_URL}"
         }
         always {
-            archiveArtifacts artifacts: 'migration/*.log', allowEmptyArchive: true
+            // Fix: Absoluter Pfad, damit Jenkins die Logs in C:\postgres findet
+            archiveArtifacts artifacts: 'C:/postgres/migration/*.log, C:/postgres/migration/*.txt', allowEmptyArchive: true
         }
     }
 }
