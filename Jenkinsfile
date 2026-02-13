@@ -2,14 +2,26 @@ pipeline {
     agent {
         label 'migration-worker'
     }
-    
+    /* 
     environment {
         JAVA_HOME = 'C:\\baustelle_8.6\\jdk-17.0.11.9-hotspot'
         PYTHON_BIN = 'C:\\Users\\LAN\\AppData\\Local\\Programs\\Python\\Python312\\python.exe'
         PYTHONIOENCODING = 'utf-8'
         PYTHONUNBUFFERED = '1'
     }
-    
+    */
+    environment {
+        JAVA_HOME = 'C:\\baustelle_8.6\\jdk-17.0.11.9-hotspot'
+        PYTHON_BIN = 'C:\\Users\\LAN\\AppData\\Local\\Programs\\Python\\Python312\\python.exe'
+        
+        // Diese beiden sorgen für saubere Echtzeit-Logs
+        PYTHONIOENCODING = 'utf-8'
+        PYTHONUNBUFFERED = '1'
+        
+        // Jenkins reicht die Secrets sicher als Umgebungsvariable an Python weiter
+        IFX_PW = credentials('INFORMIX_PASSWORD')
+        PG_PW  = credentials('POSTGRES_PASSWORD')
+    }
     triggers {
         cron('0 2 * * *')
     }
