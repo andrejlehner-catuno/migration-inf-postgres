@@ -1,80 +1,107 @@
 pipeline {
     agent {
-        label 'migration-worker' 
+        label 'migration-worker'
     }
     
     environment {
         JAVA_HOME = 'C:\\baustelle_8.6\\jdk-17.0.11.9-hotspot'
         PYTHON_BIN = 'C:\\Users\\LAN\\AppData\\Local\\Programs\\Python\\Python312\\python.exe'
-        WORKING_DIR = 'C:\\postgres'
         PYTHONIOENCODING = 'utf-8'
         PYTHONUNBUFFERED = '1'
-        // Hier die Ziel-E-Mail (Gmail oder Catuno) eintragen:
-        MAIL_TO = 'geminiisteintrottel@gmail.com' 
+    }
+    
+    triggers {
+        cron('0 2 * * *')
+    }
+    
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '30'))
+        timeout(time: 3, unit: 'HOURS')
+        timestamps()
     }
     
     stages {
+        stage('Prepare') {
+            steps {
+                echo 'Starting CATUNO PostgreSQL Migration Pipeline'
+                echo "Build: ${env.BUILD_NUMBER}"
+            }
+        }
+        
+        stage('Install Dependencies') {
+            steps {
+                bat '''
+                    "%PYTHON_BIN%" -m pip install --break-system-packages jaydebeapi || exit /b 0
+                    "%PYTHON_BIN%" -m pip install --break-system-packages JPype1 || exit /b 0
+                    "%PYTHON_BIN%" -m pip install --break-system-packages psycopg2-binary || exit /b 0
+                '''
+            }
+        }
+        
         stage('Phase 2a: Primary Keys') {
             steps {
-                echo 'Prüfe/Erstelle Primary Keys...'
-                bat """
-                    set JAVA_HOME=${env.JAVA_HOME}
-                    cd /d "${env.WORKING_DIR}"
-                    "${env.PYTHON_BIN}" -u migrate_primary_keys.py
-                """
+                bat '''
+                    cd /d "C:\\postgres"
+                    set JAVA_HOME=%JAVA_HOME%
+                    "%PYTHON_BIN%" -u migrate_primary_keys.py
+                '''
             }
         }
         
         stage('Phase 2b: Indexes') {
             steps {
-                echo 'Erstelle Datenbank-Indizes...'
-                bat """
-                    set JAVA_HOME=${env.JAVA_HOME}
-                    cd /d "${env.WORKING_DIR}"
-                    "${env.PYTHON_BIN}" -u migrate_indexes.py
-                """
+                bat '''
+                    cd /d "C:\\postgres"
+                    set JAVA_HOME=%JAVA_HOME%
+                    "%PYTHON_BIN%" -u migrate_indexes.py
+                '''
             }
         }
         
         stage('Phase 2c: Foreign Keys') {
             steps {
-                echo 'Erstelle Foreign Keys...'
-                bat """
-                    set JAVA_HOME=${env.JAVA_HOME}
-                    cd /d "${env.WORKING_DIR}"
-                    "${env.PYTHON_BIN}" -u migrate_foreign_keys.py
-                """
+                bat '''
+                    cd /d "C:\\postgres"
+                    set JAVA_HOME=%JAVA_HOME%
+                    "%PYTHON_BIN%" -u migrate_foreign_keys.py
+                '''
             }
         }
         
         stage('QA Validation') {
             steps {
-                echo 'Starte finale QA Validierung...'
-                bat """
-                    set JAVA_HOME=${env.JAVA_HOME}
-                    cd /d "${env.WORKING_DIR}"
-                    "${env.PYTHON_BIN}" -u qa_validation.py
-                """
+                bat '''
+                    cd /d "C:\\postgres"
+                    set JAVA_HOME=%JAVA_HOME%
+                    "%PYTHON_BIN%" -u qa_validation.py
+                '''
             }
         }
     }
     
     post {
-        success {
-            echo 'Sende Erfolgs-E-Mail...'
-            mail to: "${env.MAIL_TO}",
-                 subject: "SUCCESS: Migration abgeschlossen (Build #${env.BUILD_NUMBER})",
-                 body: "Die Migration der Struktur und die QA-Validierung waren erfolgreich.\n\nDetails findest du hier: ${env.BUILD_URL}"
-        }
-        failure {
-            echo 'Sende Fehler-E-Mail...'
-            mail to: "${env.MAIL_TO}",
-                 subject: "FAILURE: Fehler in der Migration (Build #${env.BUILD_NUMBER})",
-                 body: "Der Build ist fehlgeschlagen. Bitte prüfe die Konsole in Jenkins: ${env.BUILD_URL}"
-        }
         always {
-            // Fix: Absoluter Pfad, damit Jenkins die Logs in C:\postgres findet
-            archiveArtifacts artifacts: 'C:/postgres/migration/*.log, C:/postgres/migration/*.txt', allowEmptyArchive: true
+            script {
+                bat '''
+                    if not exist migration mkdir migration
+                    if exist C:\\postgres\\migration\\*.log xcopy C:\\postgres\\migration\\*.log migration\\ /Y /I
+                    if exist C:\\postgres\\migration\\*.json xcopy C:\\postgres\\migration\\*.json migration\\ /Y /I
+                    if exist C:\\postgres\\migration\\*.txt xcopy C:\\postgres\\migration\\*.txt migration\\ /Y /I
+                '''
+            }
+            archiveArtifacts artifacts: 'migration/*.log, migration/*.json, migration/*.txt', allowEmptyArchive: true
+        }
+        
+        success {
+            mail to: 'andrej.lehner@catuno.de',
+                 subject: "✅ CATUNO Migration SUCCESSFUL - Build #${env.BUILD_NUMBER}",
+                 body: "Migration erfolgreich abgeschlossen.\nDetails: ${env.BUILD_URL}"
+        }
+        
+        failure {
+            mail to: 'andrej.lehner@catuno.de',
+                 subject: "❌ CATUNO Migration FAILED - Build #${env.BUILD_NUMBER}",
+                 body: "Fehler in der Pipeline. Prüfe das Log: ${env.BUILD_URL}console"
         }
     }
 }
