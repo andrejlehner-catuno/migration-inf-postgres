@@ -1,8 +1,22 @@
+# Verzeichnisse mit temporären Daten/Logs ignorieren
 migration/
+__pycache__/
+
+# Datenbank-Dumps und Archive
 db/
 db.zip
-__pycache__/
+*.zip
+*.dump
+
+# Python Bytecode
 *.pyc
+
+# Logs (überall im Projekt)
 *.log
-git
-master)
+
+# Verhindert, dass aus Versehen lokale IDE-Einstellungen hochgeladen werden
+.vscode/
+.idea/
+
+# WICHTIG: Deine Git-Verwaltung selbst ("git") und Branch-Namen gehören NICHT in die gitignore.
+# Git weiß von selbst, dass es den .git Ordner nicht hochladen darf.
