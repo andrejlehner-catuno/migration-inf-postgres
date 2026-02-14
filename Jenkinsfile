@@ -2,26 +2,20 @@ pipeline {
     agent {
         label 'migration-worker'
     }
-    /* 
-    environment {
-        JAVA_HOME = 'C:\\baustelle_8.6\\jdk-17.0.11.9-hotspot'
-        PYTHON_BIN = 'C:\\Users\\LAN\\AppData\\Local\\Programs\\Python\\Python312\\python.exe'
-        PYTHONIOENCODING = 'utf-8'
-        PYTHONUNBUFFERED = '1'
-    }
-    */
+
     environment {
         JAVA_HOME = 'C:\\baustelle_8.6\\jdk-17.0.11.9-hotspot'
         PYTHON_BIN = 'C:\\Users\\LAN\\AppData\\Local\\Programs\\Python\\Python312\\python.exe'
         
-        // Diese beiden sorgen für saubere Echtzeit-Logs
+        // Saubere Echtzeit-Logs für die Jenkins Console
         PYTHONIOENCODING = 'utf-8'
         PYTHONUNBUFFERED = '1'
         
-        // Jenkins reicht die Secrets sicher als Umgebungsvariable an Python weiter
+        // Jenkins Secrets sicher laden
         IFX_PW = credentials('INFORMIX_PASSWORD')
         PG_PW  = credentials('POSTGRES_PASSWORD')
     }
+
     triggers {
         cron('0 2 * * *')
     }
@@ -94,26 +88,35 @@ pipeline {
     post {
         always {
             script {
-                bat '''
+                // Ermittelt das aktuelle Datum für die Dateisuche (Format: 20260214)
+                def today = new Date().format("yyyyMMdd")
+                echo "Archiviere Reports für den Lauf am: ${today}"
+                
+                bat """
                     if not exist migration mkdir migration
-                    if exist C:\\postgres\\migration\\*.log xcopy C:\\postgres\\migration\\*.log migration\\ /Y /I
-                    if exist C:\\postgres\\migration\\*.json xcopy C:\\postgres\\migration\\*.json migration\\ /Y /I
-                    if exist C:\\postgres\\migration\\*.txt xcopy C:\\postgres\\migration\\*.txt migration\\ /Y /I
-                '''
+                    
+                    :: Kopiere gezielt nur die Dateien von HEUTE, um Logs nicht aufzublähen
+                    if exist C:\\postgres\\migration\\*_${today}_*.log xcopy C:\\postgres\\migration\\*_${today}_*.log migration\\ /Y /I
+                    if exist C:\\postgres\\migration\\*_${today}_*.json xcopy C:\\postgres\\migration\\*_${today}_*.json migration\\ /Y /I
+                    if exist C:\\postgres\\migration\\*_${today}_*.txt xcopy C:\\postgres\\migration\\*_${today}_*.txt migration\\ /Y /I
+                    
+                    :: Kopiere Checkpoints (immer die aktuellsten)
+                    if exist C:\\postgres\\migration\\*checkpoint.json xcopy C:\\postgres\\migration\\*checkpoint.json migration\\ /Y /I
+                """
             }
-            archiveArtifacts artifacts: 'migration/*.log, migration/*.json, migration/*.txt', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'migration/*', allowEmptyArchive: true
         }
         
         success {
             mail to: 'andrej.lehner@catuno.de',
                  subject: "✅ CATUNO Migration SUCCESSFUL - Build #${env.BUILD_NUMBER}",
-                 body: "Migration erfolgreich abgeschlossen.\nDetails: ${env.BUILD_URL}"
+                 body: "Die Migration wurde erfolgreich validiert.\n\nBuild-URL: ${env.BUILD_URL}\nChecke die QA-Reports im Jenkins-Artifact-Store."
         }
         
         failure {
             mail to: 'andrej.lehner@catuno.de',
                  subject: "❌ CATUNO Migration FAILED - Build #${env.BUILD_NUMBER}",
-                 body: "Fehler in der Pipeline. Prüfe das Log: ${env.BUILD_URL}console"
+                 body: "Achtung: Die Pipeline ist fehlgeschlagen.\n\nPrüfe die Console: ${env.BUILD_URL}console"
         }
     }
 }
