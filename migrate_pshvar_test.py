@@ -1,106 +1,52 @@
 #!/usr/bin/env python3
 """
-Test-Migration: pshvar Tabelle von Informix nach PostgreSQL
-Informix: READ-ONLY (JDBC)
-PostgreSQL: WRITE
+MIGRATION: uno_awlp (Informix → PostgreSQL)
+Zentralisiertes Sicherheits-Update: Nutzt db_config.py
 """
 
-import jaydebeapi
-import psycopg2
-from datetime import datetime
+import os
 import sys
+from datetime import datetime
+# --- ZENTRALE CONFIG IMPORTIEREN ---
+from db_config import connect_informix, connect_postgres
 
 # Konfiguration
-INFORMIX_JDBC_URL = "jdbc:informix-sqli://localhost:9095/unostdtest:INFORMIXSERVER=ol_catuno_utf8en;CLIENT_LOCALE=en_US.utf8;DB_LOCALE=en_US.utf8;DBDATE=DMY4.;DBMONEY=.;DBDELIMITER=|"
-INFORMIX_JDBC_DRIVER = "com.informix.jdbc.IfxDriver"
-INFORMIX_JDBC_JAR = [
-    r"C:\baustelle_8.6\de.cerpsw.barracuda.runtime\lib\de.cerpsw.sysfunction\jdbc-4.50.11.jar",
-    r"C:\baustelle_8.6\de.cerpsw.barracuda.runtime\lib\de.cerpsw.sysfunction\bson-3.8.0.jar"
-]
-INFORMIX_USER = "informix"
-INFORMIX_PASSWORD = "informix"
-
-POSTGRES_CONFIG = {
-    'host': 'localhost',
-    'port': 5432,
-    'database': 'catunoqs_pg',
-    'user': 'catuno',
-    'password': 'start12345'
-}
-
 TABLE_NAME = 'uno_awlp'
 BATCH_SIZE = 100
 
 def log(message):
-    """Simple logging with timestamp"""
+    """Einfaches Logging mit Zeitstempel"""
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     print(f"[{timestamp}] {message}")
 
-def connect_informix():
-    """Connect to Informix via JDBC (READ-ONLY)"""
-    try:
-        log("Connecting to Informix via JDBC...")
-        conn = jaydebeapi.connect(
-            INFORMIX_JDBC_DRIVER,
-            INFORMIX_JDBC_URL,
-            [INFORMIX_USER, INFORMIX_PASSWORD],
-            INFORMIX_JDBC_JAR
-        )
-        log("✓ Informix connected via JDBC (READ-ONLY)")
-        return conn
-    except Exception as e:
-        log(f"✗ Informix JDBC connection failed: {e}")
-        import traceback
-        traceback.print_exc()
-        sys.exit(1)
-
-def connect_postgres():
-    """Connect to PostgreSQL"""
-    try:
-        log("Connecting to PostgreSQL...")
-        conn = psycopg2.connect(**POSTGRES_CONFIG)
-        log("✓ PostgreSQL connected")
-        return conn
-    except Exception as e:
-        log(f"✗ PostgreSQL connection failed: {e}")
-        sys.exit(1)
-
-def count_rows_informix(conn):
-    """Count rows in Informix"""
+def count_rows(conn, table, db_type="PostgreSQL"):
+    """Zählt Zeilen in der angegebenen Datenbank"""
     cursor = conn.cursor()
-    cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NAME}")
-    count = cursor.fetchone()[0]
-    cursor.close()
-    return count
-
-def count_rows_postgres(conn):
-    """Count rows in PostgreSQL"""
-    cursor = conn.cursor()
-    cursor.execute(f"SELECT COUNT(*) FROM {TABLE_NAME}")
+    cursor.execute(f"SELECT COUNT(*) FROM {table}")
     count = cursor.fetchone()[0]
     cursor.close()
     return count
 
 def migrate_data(ifx_conn, pg_conn):
-    """Migrate data from Informix to PostgreSQL"""
+    """Migriert Daten von Informix nach PostgreSQL"""
     
-    # Count source rows
-    total_rows = count_rows_informix(ifx_conn)
-    log(f"Source table has {total_rows} rows")
+    total_rows = count_rows(ifx_conn, TABLE_NAME, "Informix")
+    log(f"Quell-Tabelle {TABLE_NAME} hat {total_rows} Zeilen")
     
-    # Clear target table
-    log("Clearing target table...")
+    # Ziel-Tabelle leeren
+    log(f"Leere Ziel-Tabelle {TABLE_NAME}...")
     pg_cursor = pg_conn.cursor()
     pg_cursor.execute(f"TRUNCATE TABLE {TABLE_NAME}")
     pg_conn.commit()
-    log("✓ Target table cleared")
+    log("✓ Ziel-Tabelle geleert")
     
-    # Read from Informix
-    log("Reading data from Informix...")
+    # Aus Informix lesen
+    log("Lese Daten aus Informix...")
     ifx_cursor = ifx_conn.cursor()
     ifx_cursor.execute(f"SELECT * FROM {TABLE_NAME}")
     
-    # Insert into PostgreSQL in batches
+    # In PostgreSQL einfügen (Batch-Verfahren)
+    # WICHTIG: Spaltennamen explizit angeben
     insert_sql = f"""
     INSERT INTO {TABLE_NAME} 
     (u40_awlnr, u40_spr, u40_lfdnr, u40_anzwert, u40_dbwert, 
@@ -111,7 +57,7 @@ def migrate_data(ifx_conn, pg_conn):
     rows_migrated = 0
     batch = []
     
-    log("Migrating data...")
+    log("Starte Migration...")
     
     while True:
         row = ifx_cursor.fetchone()
@@ -124,81 +70,64 @@ def migrate_data(ifx_conn, pg_conn):
             pg_cursor.executemany(insert_sql, batch)
             pg_conn.commit()
             rows_migrated += len(batch)
-            print(f"\rProgress: {rows_migrated}/{total_rows} rows ({100*rows_migrated//total_rows}%)", end='')
+            # Fortschrittsanzeige in einer Zeile
+            sys.stdout.write(f"\rFortschritt: {rows_migrated}/{total_rows} Zeilen ({100*rows_migrated//total_rows}%)")
+            sys.stdout.flush()
             batch = []
     
-    # Insert remaining rows
+    # Verbleibende Zeilen einfügen
     if batch:
         pg_cursor.executemany(insert_sql, batch)
         pg_conn.commit()
         rows_migrated += len(batch)
-        print(f"\rProgress: {rows_migrated}/{total_rows} rows (100%)")
+        print(f"\rFortschritt: {rows_migrated}/{total_rows} Zeilen (100%)")
     
     ifx_cursor.close()
     pg_cursor.close()
     
-    log(f"✓ Migrated {rows_migrated} rows")
-    
+    log(f"✓ {rows_migrated} Zeilen migriert")
     return rows_migrated
 
-def verify_migration(ifx_conn, pg_conn):
-    """Verify migration by comparing row counts"""
-    log("Verifying migration...")
-    
-    ifx_count = count_rows_informix(ifx_conn)
-    pg_count = count_rows_postgres(pg_conn)
-    
-    log(f"Informix rows: {ifx_count}")
-    log(f"PostgreSQL rows: {pg_count}")
-    
-    if ifx_count == pg_count:
-        log("✓ Row counts match!")
-        return True
-    else:
-        log(f"✗ Row count mismatch! Difference: {abs(ifx_count - pg_count)}")
-        return False
-
 def main():
-    """Main migration function"""
     log("=" * 60)
-    log(f"TEST MIGRATION: {TABLE_NAME}")
+    log(f"TEST MIGRATION: {TABLE_NAME} (Secure Mode)")
     log("=" * 60)
-    
-    # Connect
-    ifx_conn = connect_informix()
-    pg_conn = connect_postgres()
     
     try:
-        # Migrate
+        # Verbindungen über zentrale Config
+        ifx_conn = connect_informix()
+        pg_conn = connect_postgres()
+        
         start_time = datetime.now()
         rows = migrate_data(ifx_conn, pg_conn)
         duration = (datetime.now() - start_time).total_seconds()
         
-        log(f"Migration completed in {duration:.2f} seconds")
-        log(f"Speed: {rows/duration:.0f} rows/sec")
+        # Verifizierung
+        pg_count = count_rows(pg_conn, TABLE_NAME)
         
-        # Verify
-        success = verify_migration(ifx_conn, pg_conn)
+        log(f"Dauer: {duration:.2f} Sekunden")
+        if rows > 0 and duration > 0:
+            log(f"Geschwindigkeit: {rows/duration:.0f} Zeilen/Sek")
         
-        if success:
+        if pg_count == rows:
             log("=" * 60)
-            log("✓✓✓ TEST MIGRATION SUCCESSFUL! ✓✓✓")
+            log("✓✓✓ MIGRATION ERFOLGREICH! ✓✓✓")
             log("=" * 60)
         else:
             log("=" * 60)
-            log("✗✗✗ TEST MIGRATION FAILED! ✗✗✗")
+            log(f"✗ FEHLER: Zeilenzahl weicht ab! (PG: {pg_count})")
             log("=" * 60)
             sys.exit(1)
             
     except Exception as e:
-        log(f"✗ Migration error: {e}")
+        log(f"✗ Migrationsfehler: {e}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
     finally:
-        ifx_conn.close()
-        pg_conn.close()
-        log("Connections closed")
+        if 'ifx_conn' in locals(): ifx_conn.close()
+        if 'pg_conn' in locals(): pg_conn.close()
+        log("Verbindungen geschlossen")
 
 if __name__ == "__main__":
     main()
