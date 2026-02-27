@@ -40,12 +40,20 @@ INFORMIX_JDBC_JAR = [
 ]
 INFORMIX_USER = "informix"
 
+#POSTGRES_CONFIG = {
+ #   'host': 'localhost',
+  #  'port': 5432,
+   # 'database': 'catuno_production',
+    #'user': 'catuno',
+    '#password': POSTGRES_PASSWORD  # Nutzt die sichere Variable
+#}
+# Suchen Sie diesen Block (ca. Zeile 53) und ersetzen Sie ihn:
 POSTGRES_CONFIG = {
     'host': 'localhost',
-    'port': 5432,
+    'port': int(os.getenv('PG_PORT', 5432)), # Liest 5433 aus dem Jenkinsfile, Fallback 5432
     'database': 'catuno_production',
     'user': 'catuno',
-    'password': POSTGRES_PASSWORD  # Nutzt die sichere Variable
+    'password': POSTGRES_PASSWORD
 }
 
 BATCH_SIZE = 500
