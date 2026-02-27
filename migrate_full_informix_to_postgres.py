@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 VOLLSTÄNDIGE MIGRATION: Informix → PostgreSQL
-Alle Tabellen mit automatischer Schema-Konvertierung
-Sicherheits-Update: Passwörter werden über Umgebungsvariablen geladen.
+Alle Tabellen mit automatischer Schema-Konvertierung.
+Zentralisiertes Update: Nutzt db_config.py für konsistente Ports und Credentials.
 """
 
 import jaydebeapi
@@ -13,43 +13,15 @@ import os
 import json
 import traceback
 
-# --- SICHERHEITS-CHECK: Credentials laden ---
-INFORMIX_PASSWORD = os.getenv('IFX_PW')
-POSTGRES_PASSWORD = os.getenv('PG_PW')
-
-if not INFORMIX_PASSWORD or not POSTGRES_PASSWORD:
-    print("=" * 80)
-    print("⚠️  FEHLER: DATENBANK-PASSWÖRTER NICHT GEFUNDEN!")
-    print("=" * 80)
-    if not INFORMIX_PASSWORD:
-        print(" -> Variable 'IFX_PW' fehlt.")
-    if not POSTGRES_PASSWORD:
-        print(" -> Variable 'PG_PW' fehlt.")
-    print("-" * 80)
-    print("IM JENKINS: Stellen Sie sicher, dass das Jenkinsfile 'credentials()' nutzt.")
-    print("LOKAL: Nutzen Sie 'set IFX_PW=...' und 'set PG_PW=...' in der CMD.")
-    print("=" * 80)
+# --- ZENTRALE CONFIG IMPORTIEREN ---
+# Dies stellt sicher, dass Port 5433 (aus Jenkins) überall einheitlich genutzt wird.
+try:
+    from db_config import connect_postgres, connect_informix, INFORMIX_JDBC_JAR, INFORMIX_JDBC_DRIVER
+except ImportError:
+    print("FEHLER: db_config.py nicht im selben Verzeichnis gefunden!")
     sys.exit(1)
 
-# Konfiguration
-INFORMIX_JDBC_URL = "jdbc:informix-sqli://localhost:9095/unostdtest:INFORMIXSERVER=ol_catuno_utf8en;CLIENT_LOCALE=en_US.utf8;DB_LOCALE=en_US.utf8;DBDATE=DMY4.;DBMONEY=.;DBDELIMITER=|"
-INFORMIX_JDBC_DRIVER = "com.informix.jdbc.IfxDriver"
-INFORMIX_JDBC_JAR = [
-    r"C:\baustelle_8.6\de.cerpsw.barracuda.runtime\lib\de.cerpsw.sysfunction\jdbc-4.50.11.jar",
-    r"C:\baustelle_8.6\de.cerpsw.barracuda.runtime\lib\de.cerpsw.sysfunction\bson-3.8.0.jar"
-]
-INFORMIX_USER = "informix"
-
-
-
-POSTGRES_CONFIG = {
-    'host': 'localhost',
-    'port': int(os.getenv('PG_PORT', 5432)), # Liest 5433 aus dem Jenkinsfile, Fallback 5432
-    'database': 'catuno_production',
-    'user': 'catuno',
-    'password': POSTGRES_PASSWORD
-}
-
+# Konfiguration Pfade & Batches
 BATCH_SIZE = 500
 LOG_DIR = r"C:\postgres\migration"
 CHECKPOINT_FILE = os.path.join(LOG_DIR, "checkpoint.json")
@@ -98,6 +70,7 @@ class MigrationLogger:
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         log_line = f"[{timestamp}] [{level}] {message}"
         print(log_line)
+        if not os.path.exists(LOG_DIR): os.makedirs(LOG_DIR)
         with open(self.log_file, 'a', encoding='utf-8') as f:
             f.write(log_line + '\n')
     def error(self, message): self.log(message, "ERROR")
@@ -123,25 +96,6 @@ class Checkpoint:
         self.data['stats'][table_name] = {'status': 'failed', 'error': str(error)}
         self.save()
     def is_completed(self, table_name): return table_name in self.data['completed_tables']
-
-def connect_informix():
-    try:
-        conn = jaydebeapi.connect(
-            INFORMIX_JDBC_DRIVER,
-            INFORMIX_JDBC_URL,
-            [INFORMIX_USER, INFORMIX_PASSWORD], 
-            INFORMIX_JDBC_JAR
-        )
-        return conn
-    except Exception as e:
-        raise Exception(f"Informix connection failed: {e}")
-
-def connect_postgres():
-    try:
-        conn = psycopg2.connect(**POSTGRES_CONFIG)
-        return conn
-    except Exception as e:
-        raise Exception(f"PostgreSQL connection failed: {e}")
 
 def get_all_tables(ifx_conn, logger):
     logger.log("Fetching table list from Informix...")
@@ -224,23 +178,36 @@ def migrate_single_table(ifx_conn, pg_conn, table_info, logger, checkpoint):
         checkpoint.mark_completed(table_name, rows, (datetime.now() - start_time).total_seconds())
         return True
     except Exception as e:
-        logger.error(f"Migration failed: {e}")
+        logger.error(f"Migration failed for {table_name}: {e}")
         checkpoint.mark_failed(table_name, str(e))
         return False
 
 def main():
     logger, checkpoint = MigrationLogger(LOG_FILE), Checkpoint(CHECKPOINT_FILE)
+    # JAVA_HOME für JDBC setzen
     os.environ['JAVA_HOME'] = r'C:\baustelle_8.6\jdk-17.0.11.9-hotspot'
+    
     try:
-        ifx_conn, pg_conn = connect_informix(), connect_postgres()
-        logger.success("Databases connected via environment secrets")
+        logger.log("Connecting to databases using central db_config...")
+        ifx_conn = connect_informix()
+        pg_conn = connect_postgres()
+        logger.success(f"Connected to PostgreSQL on port {pg_conn.get_dsn_parameters().get('port')}")
+        
         tables = get_all_tables(ifx_conn, logger)
         pending = [t for t in tables if not checkpoint.is_completed(t['name'])]
+        
+        logger.log(f"Starting migration of {len(pending)} tables...")
         for i, t in enumerate(pending, 1):
             migrate_single_table(ifx_conn, pg_conn, t, logger, checkpoint)
+            if i % 50 == 0: logger.log(f"Progress: {i}/{len(pending)} tables processed.")
+            
         ifx_conn.close(); pg_conn.close()
+        logger.success("Migration process finished.")
+        
     except Exception as e:
-        logger.error(f"FATAL: {e}"); sys.exit(1)
+        logger.error(f"FATAL ERROR: {e}")
+        traceback.print_exc()
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()
