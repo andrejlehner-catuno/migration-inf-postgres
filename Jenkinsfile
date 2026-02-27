@@ -91,9 +91,9 @@ pipeline {
                     podman exec ${PG_CONTAINER} psql -U postgres -d ${PG_DATABASE} -c "GRANT ALL ON SCHEMA public TO catuno;"
                     podman exec ${PG_CONTAINER} psql -U postgres -d ${PG_DATABASE} -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO catuno;"
                     podman exec ${PG_CONTAINER} psql -U postgres -d ${PG_DATABASE} -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO catuno;"
+                    
+                    podman exec ${PG_CONTAINER} psql -U postgres -l
                 """
-                // KORREKTUR: SQL-Abfrage statt \l um Escaping-Probleme unter Windows zu vermeiden
-                bat "podman exec ${PG_CONTAINER} psql -U postgres -c \"SELECT datname FROM pg_database;\""
                 echo 'Datenbank catuno_production im Playground bereit.'
             }
         }
@@ -127,7 +127,7 @@ pipeline {
         stage('Migration: Daten') {
             steps {
                 echo '========================================================'
-                echo 'STAGE 7: Datenmigration Informix zu PostgreSQL Playground'
+                echo 'STAGE 7: Datenmigration'
                 bat """
                     cd /d "${SCRIPTS_DIR}"
                     set JAVA_HOME=%JAVA_HOME%
@@ -140,7 +140,7 @@ pipeline {
         stage('Migration: Primary Keys') {
             steps {
                 echo '========================================================'
-                echo 'STAGE 8: Primary Keys migrieren (642 erwartet)'
+                echo 'STAGE 8: Primary Keys'
                 bat """
                     cd /d "${SCRIPTS_DIR}"
                     set JAVA_HOME=%JAVA_HOME%
@@ -153,7 +153,7 @@ pipeline {
         stage('Migration: Indizes') {
             steps {
                 echo '========================================================'
-                echo 'STAGE 9: Indizes migrieren (1957 erwartet)'
+                echo 'STAGE 9: Indizes'
                 bat """
                     cd /d "${SCRIPTS_DIR}"
                     set JAVA_HOME=%JAVA_HOME%
@@ -166,7 +166,7 @@ pipeline {
         stage('Migration: Foreign Keys') {
             steps {
                 echo '========================================================'
-                echo 'STAGE 10: Foreign Keys migrieren (2 erwartet)'
+                echo 'STAGE 10: Foreign Keys'
                 bat """
                     cd /d "${SCRIPTS_DIR}"
                     set JAVA_HOME=%JAVA_HOME%
@@ -177,4 +177,43 @@ pipeline {
         }
 
         stage('QA: Validierung') {
-            steps
+            steps {
+                echo '========================================================'
+                echo 'STAGE 11: QA Validierung'
+                bat """
+                    cd /d "${SCRIPTS_DIR}"
+                    set JAVA_HOME=%JAVA_HOME%
+                    set PG_PORT=${PG_PORT}
+                    "%PYTHON_BIN%" -u qa_validation.py
+                """
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                def today = new Date().format("yyyyMMdd")
+                echo "Archiviere Reports fuer den Lauf am: ${today}"
+                bat """
+                    if not exist migration mkdir migration
+                    if exist ${MIGRATION_DIR}\\*_${today}_*.log   xcopy ${MIGRATION_DIR}\\*_${today}_*.log   migration\\ /Y /I
+                    if exist ${MIGRATION_DIR}\\*_${today}_*.json  xcopy ${MIGRATION_DIR}\\*_${today}_*.json  migration\\ /Y /I
+                    if exist ${MIGRATION_DIR}\\*_${today}_*.txt   xcopy ${MIGRATION_DIR}\\*_${today}_*.txt   migration\\ /Y /I
+                    if exist ${MIGRATION_DIR}\\*checkpoint.json   xcopy ${MIGRATION_DIR}\\*checkpoint.json   migration\\ /Y /I
+                """
+            }
+            archiveArtifacts artifacts: 'migration/*', allowEmptyArchive: true
+        }
+        success {
+            mail to: 'andrej.lehner@catuno.de',
+                 subject: "SUCCESS: Playground Migration #${env.BUILD_NUMBER}",
+                 body: "Migration erfolgreich. URL: ${env.BUILD_URL}"
+        }
+        failure {
+            mail to: 'andrej.lehner@catuno.de',
+                 subject: "FAILURE: Playground Migration #${env.BUILD_NUMBER}",
+                 body: "Fehlgeschlagen. Log: ${env.BUILD_URL}console"
+        }
+    }
+}
