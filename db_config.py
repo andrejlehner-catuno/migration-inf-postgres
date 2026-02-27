@@ -8,9 +8,11 @@ PG_PASSWORD = os.environ['PG_PW']
 IFX_PASSWORD = os.environ['IFX_PW']
 
 # Zentrale PostgreSQL Config
+
+#Änderung 27.02.2026
 PG_CONFIG = {
     'host': 'localhost',
-    'port': 5432,
+    'port': int(os.environ['PG_PORT']),
     'database': 'catuno_production',
     'user': 'catuno',
     'password': PG_PASSWORD
