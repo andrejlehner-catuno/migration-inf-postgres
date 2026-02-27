@@ -13,21 +13,20 @@ pipeline {
         IFX_PW = credentials('INFORMIX_PASSWORD')
         PG_PW  = credentials('POSTGRES_PASSWORD')
 
-        // ⚠️  PLAYGROUND KONFIGURATION
-        // Strikte Trennung zu Produktiv:
-        //   Prod:       postgres-catuno    Port 5432
-        //   Playground: postgres-playground Port 5433  ← dieser Job
+        // PLAYGROUND KONFIGURATION
+        // Prod:       postgres-catuno      Port 5432
+        // Playground: postgres-playground  Port 5433
         PG_CONTAINER = 'postgres-playground'
         PG_VOLUME    = 'postgres-playground-data'
         PG_PORT      = '5433'
         PG_DATABASE  = 'catuno_production'
 
-        // Skripte & Logs
+        // Skripte und Logs
         SCRIPTS_DIR   = 'C:\\postgres'
         MIGRATION_DIR = 'C:\\postgres\\migration'
     }
 
-    // Nur manueller Start — kein Cron, kein SCM Polling
+    // Nur manueller Start - kein Cron, kein SCM Polling
     options {
         buildDiscarder(logRotator(numToKeepStr: '10'))
         timeout(time: 4, unit: 'HOURS')
@@ -39,26 +38,23 @@ pipeline {
 
         // --------------------------------------------------------
         // STAGE 1: SICHERHEITSCHECK
-        // Stellt sicher dass Produktiv-Container NICHT berührt wird
+        // Stellt sicher dass Produktiv-Container NICHT beruehrt wird
         // --------------------------------------------------------
-        stage('Check: Produktiv-Schutz') {
+        stage('Check: Sicherheit') {
             steps {
                 echo '========================================================'
                 echo 'STAGE 1: Sicherheitscheck'
-                echo '  Playground: postgres-playground (Port 5433)'
-                echo '  Produktiv:  postgres-catuno     (Port 5432) — wird NICHT angefasst'
+                echo 'Playground: postgres-playground (Port 5433)'
+                echo 'Produktiv:  postgres-catuno     (Port 5432) - wird NICHT angefasst'
                 echo '========================================================'
                 script {
-                    // Explizit sicherstellen dass wir NICHT den Prod-Container verwenden
-                    def container = env.PG_CONTAINER
-                    if (container == 'postgres-catuno') {
+                    if (env.PG_CONTAINER == 'postgres-catuno') {
                         error('SICHERHEITSFEHLER: PG_CONTAINER zeigt auf Produktiv! Abbruch.')
                     }
-                    def port = env.PG_PORT
-                    if (port == '5432') {
+                    if (env.PG_PORT == '5432') {
                         error('SICHERHEITSFEHLER: PG_PORT 5432 ist Produktiv! Abbruch.')
                     }
-                    echo "OK: Container=${container}, Port=${port}"
+                    echo "OK: Container=${env.PG_CONTAINER}, Port=${env.PG_PORT}"
                 }
             }
         }
@@ -67,15 +63,16 @@ pipeline {
         // STAGE 2: TEARDOWN
         // Nur Playground-Ressourcen entfernen
         // --------------------------------------------------------
-        stage('Teardown: Playground bereinigen') {
+        stage('Teardown: Playground') {
             steps {
                 echo '========================================================'
-                echo 'STAGE 2: Teardown — nur Playground-Ressourcen'
+                echo 'STAGE 2: Teardown - nur Playground-Ressourcen'
                 echo '========================================================'
                 bat """
-                    podman stop ${PG_CONTAINER}  2>nul || echo "Container nicht aktiv — OK"
-                    podman rm -f ${PG_CONTAINER} 2>nul || echo "Container nicht vorhanden — OK"
-                    podman volume rm ${PG_VOLUME} 2>nul || echo "Volume nicht vorhanden — OK"
+                    podman stop ${PG_CONTAINER}  2>nul
+                    podman rm -f ${PG_CONTAINER} 2>nul
+                    podman volume rm ${PG_VOLUME} 2>nul
+                    echo Teardown abgeschlossen
                 """
                 echo 'Teardown abgeschlossen.'
             }
@@ -84,7 +81,7 @@ pipeline {
         // --------------------------------------------------------
         // STAGE 3: POSTGRESQL PLAYGROUND CONTAINER STARTEN
         // Neuer Container auf Port 5433
-        // Produktiv läuft unabhängig auf Port 5432
+        // Produktiv laeuft unabhaengig auf Port 5432
         // --------------------------------------------------------
         stage('Setup: PostgreSQL Container') {
             steps {
@@ -103,7 +100,6 @@ pipeline {
                 """
                 // Warten bis PostgreSQL hochgefahren ist
                 bat 'ping -n 20 127.0.0.1 > nul'
-                // Health Check
                 bat "podman exec ${PG_CONTAINER} pg_isready -U postgres"
                 echo 'PostgreSQL Playground Container ist bereit.'
             }
@@ -111,8 +107,8 @@ pipeline {
 
         // --------------------------------------------------------
         // STAGE 4: DATENBANK ANLEGEN
-        // catuno_production — gleicher Name wie Produktiv
-        // db_config.py verbindet via PG_PORT=5433 → Playground
+        // catuno_production - gleicher Name wie Produktiv
+        // db_config.py verbindet via PG_PORT=5433 zum Playground
         // --------------------------------------------------------
         stage('Setup: Datenbank anlegen') {
             steps {
@@ -151,22 +147,23 @@ pipeline {
         // --------------------------------------------------------
         // STAGE 6: INFORMIX CHECK
         // Informix muss laufen bevor Migration startet
-        // Schlägt hier fehl → Abbruch, PostgreSQL noch leer → kein Schaden
+        // Schlaegt hier fehl: Abbruch, PostgreSQL noch leer, kein Schaden
         // --------------------------------------------------------
-        stage('Check: Informix erreichbar') {
+        stage('Check: Informix') {
             steps {
                 echo '========================================================'
                 echo 'STAGE 6: Informix Connection Check'
-                echo '  Erwartet: kollegen_db auf Port 9095'
+                echo 'Erwartet: kollegen_db auf Port 9095'
                 echo '========================================================'
                 bat """
-                    podman ps | findstr kollegen_db || (
-                        echo FEHLER: Informix Container kollegen_db ist nicht aktiv!
+                    podman ps | findstr kollegen_db
+                    if errorlevel 1 (
+                        echo FEHLER: Informix Container kollegen_db ist nicht aktiv
                         echo Starten mit: podman start kollegen_db
                         exit /b 1
                     )
+                    echo Informix Container kollegen_db laeuft
                 """
-                echo 'Informix Container kollegen_db laeuft.'
             }
         }
 
@@ -174,14 +171,14 @@ pipeline {
         // STAGE 7: DATENMIGRATION
         // Quelle:  Informix  localhost:9095 / unostdtest
         // Ziel:    Playground localhost:5433 / catuno_production
-        //          (db_config.py liest PG_PORT=5433 aus ENV)
+        //          db_config.py liest PG_PORT=5433 aus ENV
         // --------------------------------------------------------
         stage('Migration: Daten') {
             steps {
                 echo '========================================================'
-                echo 'STAGE 7: Datenmigration Informix → PostgreSQL Playground'
-                echo '  Quelle: localhost:9095 (Informix / unostdtest)'
-                echo '  Ziel:   localhost:5433 (Playground / catuno_production)'
+                echo 'STAGE 7: Datenmigration Informix zu PostgreSQL Playground'
+                echo 'Quelle: localhost:9095 (Informix / unostdtest)'
+                echo 'Ziel:   localhost:5433 (Playground / catuno_production)'
                 echo '========================================================'
                 bat """
                     cd /d "${SCRIPTS_DIR}"
@@ -279,7 +276,7 @@ pipeline {
 
         success {
             mail to: 'andrej.lehner@catuno.de',
-                 subject: "✅ CATUNO Playground Migration ERFOLGREICH - Build #${env.BUILD_NUMBER}",
+                 subject: "CATUNO Playground Migration ERFOLGREICH - Build #${env.BUILD_NUMBER}",
                  body: """Playground Migration erfolgreich abgeschlossen.
 
 Build:      #${env.BUILD_NUMBER}
@@ -288,17 +285,17 @@ Container:  ${PG_CONTAINER} (Port ${PG_PORT})
 Datenbank:  ${PG_DATABASE}
 
 Stages:
-  Stage 1   ✅ Sicherheitscheck
-  Stage 2   ✅ Teardown
-  Stage 3   ✅ PostgreSQL Container gestartet (Port 5433)
-  Stage 4   ✅ Datenbank angelegt
-  Stage 5   ✅ Python Dependencies
-  Stage 6   ✅ Informix erreichbar
-  Stage 7   ✅ Datenmigration
-  Stage 8   ✅ Primary Keys (642)
-  Stage 9   ✅ Indizes (1957)
-  Stage 10  ✅ Foreign Keys (2)
-  Stage 11  ✅ QA Validierung
+  Stage 1   OK  Sicherheitscheck
+  Stage 2   OK  Teardown
+  Stage 3   OK  PostgreSQL Container gestartet (Port 5433)
+  Stage 4   OK  Datenbank angelegt
+  Stage 5   OK  Python Dependencies
+  Stage 6   OK  Informix erreichbar
+  Stage 7   OK  Datenmigration
+  Stage 8   OK  Primary Keys (642)
+  Stage 9   OK  Indizes (1957)
+  Stage 10  OK  Foreign Keys (2)
+  Stage 11  OK  QA Validierung
 
 Build URL:  ${env.BUILD_URL}
 Artifacts:  ${env.BUILD_URL}artifact/migration/"""
@@ -306,7 +303,7 @@ Artifacts:  ${env.BUILD_URL}artifact/migration/"""
 
         failure {
             mail to: 'andrej.lehner@catuno.de',
-                 subject: "❌ CATUNO Playground Migration FEHLGESCHLAGEN - Build #${env.BUILD_NUMBER}",
+                 subject: "CATUNO Playground Migration FEHLGESCHLAGEN - Build #${env.BUILD_NUMBER}",
                  body: """Playground Migration fehlgeschlagen.
 
 Build:      #${env.BUILD_NUMBER}
