@@ -69,9 +69,9 @@ pipeline {
                 echo 'STAGE 2: Teardown - nur Playground-Ressourcen'
                 echo '========================================================'
                 bat """
-                    podman stop ${PG_CONTAINER}  2>nul
-                    podman rm -f ${PG_CONTAINER} 2>nul
-                    podman volume rm ${PG_VOLUME} 2>nul
+                    podman stop ${PG_CONTAINER}  2>nul || exit /b 0
+                    podman rm -f ${PG_CONTAINER} 2>nul || exit /b 0
+                    podman volume rm ${PG_VOLUME} 2>nul || exit /b 0
                     echo Teardown abgeschlossen
                 """
                 echo 'Teardown abgeschlossen.'
