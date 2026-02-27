@@ -1,0 +1,288 @@
+pipeline {
+    agent {
+        label 'migration-worker'
+    }
+
+    environment {
+        JAVA_HOME         = 'C:\\baustelle_8.6\\jdk-17.0.11.9-hotspot'
+        PYTHON_BIN        = 'C:\\Users\\LAN\\AppData\\Local\\Programs\\Python\\Python312\\python.exe'
+        PYTHONIOENCODING  = 'utf-8'
+        PYTHONUNBUFFERED  = '1'
+
+        // Jenkins Credentials
+        IFX_PW = credentials('INFORMIX_PASSWORD')
+        PG_PW  = credentials('POSTGRES_PASSWORD')
+
+        // Playground Container
+        PG_CONTAINER  = 'postgres-playground'
+        PG_VOLUME     = 'postgres-playground-data'
+        PG_PORT       = '5432'
+        PG_DATABASE   = 'catuno_production'
+
+        // Skripte & Logs
+        SCRIPTS_DIR   = 'C:\\postgres'
+        MIGRATION_DIR = 'C:\\postgres\\migration'
+    }
+
+    // Kein automatischer Trigger — nur manueller Start
+    // triggers { cron('0 2 * * *') }
+
+    options {
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timeout(time: 4, unit: 'HOURS')
+        timestamps()
+    }
+
+    stages {
+
+        // --------------------------------------------------------
+        // STAGE 1: TEARDOWN
+        // Nur Playground-Ressourcen entfernen.
+        // Produktiv-Container (postgres-catuno) wird NICHT angefasst.
+        // --------------------------------------------------------
+        stage('Teardown: Playground bereinigen') {
+            steps {
+                echo '========================================================'
+                echo 'STAGE 1: Teardown — nur Playground-Ressourcen'
+                echo '========================================================'
+                bat """
+                    podman stop ${PG_CONTAINER}  2>nul || echo "Container nicht aktiv — OK"
+                    podman rm -f ${PG_CONTAINER} 2>nul || echo "Container nicht vorhanden — OK"
+                    podman volume rm ${PG_VOLUME} 2>nul || echo "Volume nicht vorhanden — OK"
+                """
+                echo 'Teardown abgeschlossen.'
+            }
+        }
+
+        // --------------------------------------------------------
+        // STAGE 2: POSTGRESQL CONTAINER STARTEN
+        // Frischer Container auf Port 5432.
+        // Gleicher DB-Name wie Produktiv (catuno_production)
+        // → Migrationsskripte laufen ohne jede Änderung.
+        // --------------------------------------------------------
+        stage('Setup: PostgreSQL Container') {
+            steps {
+                echo '========================================================'
+                echo 'STAGE 2: PostgreSQL Playground Container starten'
+                echo '========================================================'
+                bat """
+                    podman run -d ^
+                      --name ${PG_CONTAINER} ^
+                      -e POSTGRES_PASSWORD=postgres ^
+                      -e POSTGRES_USER=postgres ^
+                      -e POSTGRES_DB=postgres ^
+                      -p ${PG_PORT}:5432 ^
+                      -v ${PG_VOLUME}:/var/lib/postgresql/data ^
+                      docker.io/library/postgres:16
+                """
+                // Warten bis PostgreSQL hochgefahren ist
+                bat 'ping -n 20 127.0.0.1 > nul'
+                // Health Check
+                bat "podman exec ${PG_CONTAINER} pg_isready -U postgres"
+                echo 'PostgreSQL Playground Container ist bereit.'
+            }
+        }
+
+        // --------------------------------------------------------
+        // STAGE 3: DATENBANK ANLEGEN
+        // catuno_production — gleicher Name wie Produktiv.
+        // Passwort wird aus Jenkins Secret PG_PW geladen.
+        // --------------------------------------------------------
+        stage('Setup: Datenbank anlegen') {
+            steps {
+                echo '========================================================'
+                echo 'STAGE 3: Datenbank catuno_production anlegen'
+                echo '========================================================'
+                bat """
+                    podman exec ${PG_CONTAINER} psql -U postgres -c "CREATE DATABASE ${PG_DATABASE} ENCODING 'UTF8';"
+                    podman exec ${PG_CONTAINER} psql -U postgres -c "CREATE USER catuno WITH PASSWORD '%PG_PW%';"
+                    podman exec ${PG_CONTAINER} psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE ${PG_DATABASE} TO catuno;"
+                    podman exec ${PG_CONTAINER} psql -U postgres -d ${PG_DATABASE} -c "GRANT ALL ON SCHEMA public TO catuno;"
+                """
+                bat "podman exec ${PG_CONTAINER} psql -U postgres -c \"\\\\l\""
+                echo 'Datenbank catuno_production bereit.'
+            }
+        }
+
+        // --------------------------------------------------------
+        // STAGE 4: PYTHON DEPENDENCIES
+        // --------------------------------------------------------
+        stage('Setup: Python Dependencies') {
+            steps {
+                echo '========================================================'
+                echo 'STAGE 4: Python Dependencies pruefen'
+                echo '========================================================'
+                bat """
+                    "%PYTHON_BIN%" -m pip install --break-system-packages jaydebeapi     || exit /b 0
+                    "%PYTHON_BIN%" -m pip install --break-system-packages JPype1         || exit /b 0
+                    "%PYTHON_BIN%" -m pip install --break-system-packages psycopg2-binary || exit /b 0
+                """
+            }
+        }
+
+        // --------------------------------------------------------
+        // STAGE 5: INFORMIX CONNECTION CHECK
+        // Informix muss laufen bevor Migration startet.
+        // Schlägt hier fehl → sauberer Abbruch, nichts wurde geschrieben.
+        // --------------------------------------------------------
+        stage('Check: Informix erreichbar') {
+            steps {
+                echo '========================================================'
+                echo 'STAGE 5: Informix Connection Check (localhost:9095)'
+                echo '========================================================'
+                bat """
+                    podman ps | findstr kollegen_db || (
+                        echo FEHLER: Informix Container kollegen_db ist nicht aktiv!
+                        echo Bitte starten: podman start kollegen_db
+                        exit /b 1
+                    )
+                """
+                echo 'Informix Container laeuft.'
+            }
+        }
+
+        // --------------------------------------------------------
+        // STAGE 6: DATENMIGRATION
+        // Liest aus Informix (localhost:9095 / unostdtest)
+        // Schreibt nach PostgreSQL Playground (localhost:5432/catuno_production)
+        // Checkpoint-Mechanismus: bei Neustart wird ab letzter Tabelle fortgesetzt.
+        // --------------------------------------------------------
+        stage('Migration: Daten') {
+            steps {
+                echo '========================================================'
+                echo 'STAGE 6: Datenmigration Informix → PostgreSQL Playground'
+                echo '========================================================'
+                bat """
+                    cd /d "${SCRIPTS_DIR}"
+                    set JAVA_HOME=%JAVA_HOME%
+                    "%PYTHON_BIN%" -u migrate_full_informix_to_postgres.py
+                """
+                echo 'Datenmigration abgeschlossen.'
+            }
+        }
+
+        // --------------------------------------------------------
+        // STAGE 7: PRIMARY KEYS (642 erwartet)
+        // --------------------------------------------------------
+        stage('Migration: Primary Keys') {
+            steps {
+                echo '========================================================'
+                echo 'STAGE 7: Primary Keys migrieren'
+                echo '========================================================'
+                bat """
+                    cd /d "${SCRIPTS_DIR}"
+                    set JAVA_HOME=%JAVA_HOME%
+                    "%PYTHON_BIN%" -u migrate_primary_keys.py
+                """
+            }
+        }
+
+        // --------------------------------------------------------
+        // STAGE 8: INDIZES (1957 erwartet)
+        // --------------------------------------------------------
+        stage('Migration: Indizes') {
+            steps {
+                echo '========================================================'
+                echo 'STAGE 8: Indizes migrieren'
+                echo '========================================================'
+                bat """
+                    cd /d "${SCRIPTS_DIR}"
+                    set JAVA_HOME=%JAVA_HOME%
+                    "%PYTHON_BIN%" -u migrate_indexes.py
+                """
+            }
+        }
+
+        // --------------------------------------------------------
+        // STAGE 9: FOREIGN KEYS (2 erwartet)
+        // --------------------------------------------------------
+        stage('Migration: Foreign Keys') {
+            steps {
+                echo '========================================================'
+                echo 'STAGE 9: Foreign Keys migrieren'
+                echo '========================================================'
+                bat """
+                    cd /d "${SCRIPTS_DIR}"
+                    set JAVA_HOME=%JAVA_HOME%
+                    "%PYTHON_BIN%" -u migrate_foreign_keys.py
+                """
+            }
+        }
+
+        // --------------------------------------------------------
+        // STAGE 10: QA VALIDIERUNG
+        // Vergleicht Playground-Ergebnis mit Informix-Quelle.
+        // --------------------------------------------------------
+        stage('QA: Validierung') {
+            steps {
+                echo '========================================================'
+                echo 'STAGE 10: QA Validierung'
+                echo '========================================================'
+                bat """
+                    cd /d "${SCRIPTS_DIR}"
+                    set JAVA_HOME=%JAVA_HOME%
+                    "%PYTHON_BIN%" -u qa_validation.py
+                """
+            }
+        }
+    }
+
+    // --------------------------------------------------------
+    // POST ACTIONS
+    // --------------------------------------------------------
+    post {
+
+        always {
+            script {
+                def today = new Date().format("yyyyMMdd")
+                echo "Archiviere Reports fuer den Lauf am: ${today}"
+                bat """
+                    if not exist migration mkdir migration
+                    if exist ${MIGRATION_DIR}\\*_${today}_*.log   xcopy ${MIGRATION_DIR}\\*_${today}_*.log   migration\\ /Y /I
+                    if exist ${MIGRATION_DIR}\\*_${today}_*.json  xcopy ${MIGRATION_DIR}\\*_${today}_*.json  migration\\ /Y /I
+                    if exist ${MIGRATION_DIR}\\*_${today}_*.txt   xcopy ${MIGRATION_DIR}\\*_${today}_*.txt   migration\\ /Y /I
+                    if exist ${MIGRATION_DIR}\\*checkpoint.json   xcopy ${MIGRATION_DIR}\\*checkpoint.json   migration\\ /Y /I
+                """
+            }
+            archiveArtifacts artifacts: 'migration/*', allowEmptyArchive: true
+        }
+
+        success {
+            mail to: 'andrej.lehner@catuno.de',
+                 subject: "✅ CATUNO Playground Migration ERFOLGREICH - Build #${env.BUILD_NUMBER}",
+                 body: """Die Playground Migration wurde erfolgreich durchgefuehrt und validiert.
+
+Build:    #${env.BUILD_NUMBER}
+Dauer:    ${currentBuild.durationString}
+
+Stages:
+  Stage 1  ✅ Teardown
+  Stage 2  ✅ PostgreSQL Container gestartet
+  Stage 3  ✅ Datenbank catuno_production angelegt
+  Stage 4  ✅ Python Dependencies
+  Stage 5  ✅ Informix erreichbar
+  Stage 6  ✅ Datenmigration
+  Stage 7  ✅ Primary Keys (642)
+  Stage 8  ✅ Indizes (1957)
+  Stage 9  ✅ Foreign Keys (2)
+  Stage 10 ✅ QA Validierung
+
+Build URL:  ${env.BUILD_URL}
+Artifacts:  ${env.BUILD_URL}artifact/migration/"""
+        }
+
+        failure {
+            mail to: 'andrej.lehner@catuno.de',
+                 subject: "❌ CATUNO Playground Migration FEHLGESCHLAGEN - Build #${env.BUILD_NUMBER}",
+                 body: """Die Playground Migration ist fehlgeschlagen.
+
+Build:    #${env.BUILD_NUMBER}
+Dauer:    ${currentBuild.durationString}
+
+Console Output: ${env.BUILD_URL}console
+
+Hinweis: Der Produktiv-Container postgres-catuno wurde nicht veraendert.
+         Playground-Container: ${PG_CONTAINER} (Port ${PG_PORT})"""
+        }
+    }
+}
