@@ -1,0 +1,2 @@
+@echo off
+java -Djava.net.preferIPv6Addresses=true -jar agent.jar -url http://H1-IP:8080/ -secret e94535c3289ce0cf498dc511b5897666502fc9b10deddac20ba223b038f18f1e -name "windows-agent" -webSocket -workDir "C:\jenkins-agent"
